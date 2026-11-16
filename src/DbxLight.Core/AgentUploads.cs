@@ -9,7 +9,7 @@ public sealed record AgentUploadItem(string Path, string State, bool Verified, s
 public sealed record AgentWaitResult(bool Ok, string Code, string Message, IReadOnlyList<AgentUploadItem> Items,
     double WaitedSeconds, DbxStatus? Status, int SkippedUnsafe = 0)
 {
-    public string RescueScope => "取り出した物は上がっておらず、wait --all の対象に入りません。dbxl rescue list --json で確認してください。";
+    public string RescueScope => "退避したファイルはアップロードされておらず、wait --all の対象に入りません。dbxl rescue list --json で確認してください。";
 }
 public sealed record AgentWaitOutcome(int ExitCode, AgentWaitResult Result);
 internal sealed record UploadQueueEntry(string Path, bool Uploading, int Tries);

@@ -7,7 +7,7 @@ internal sealed class RescuePresenceException(string message) : IOException(mess
 
 internal static class RescuePaths
 {
-    internal const string Unknown = "\u78ba\u304b\u3081\u3089\u308c\u306a\u3044\u8a18\u9332";
+    internal const string Unknown = "\u78ba\u8a8d\u3067\u304d\u306a\u3044\u8a18\u9332";
     internal static string Full(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) ||
@@ -66,13 +66,13 @@ internal static class RescuePaths
             if (!had) return;
             bool from = File.Exists(source), to = File.Exists(destination);
             if (r.MoveCompleted ? !to : from == to)
-                throw new RescuePresenceException((Same(destination, r.DestinationPath) ? "本体" : "管理情報") +
-                    (from && to ? ": 元と取り出し先の両方にあります。" : !from && !to ? ": 元にも取り出し先にもありません。" : ": 取り出し先にありません。"));
+                throw new RescuePresenceException((Same(destination, r.DestinationPath) ? "ファイル本体" : "管理情報") +
+                    (from && to ? ": 元と退避先の両方にあります。" : !from && !to ? ": 元にも退避先にもありません。" : ": 退避先にありません。"));
             if (to) PrivateStateFiles.ValidateExisting(destination);
         }
         Present(r.HadData, r.OriginalPath, r.DestinationPath);
         Present(r.HadMetadata, r.OriginalMetadataPath, r.MetadataDestinationPath);
         if (r.HadData && File.Exists(r.DestinationPath) && new FileInfo(r.DestinationPath).Length != r.Size)
-            throw new RescuePresenceException("本体: 取り出し先の長さが記録と一致しません。");
+            throw new RescuePresenceException("ファイル本体: 退避先の長さが記録と一致しません。");
     }
 }

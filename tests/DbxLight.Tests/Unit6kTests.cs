@@ -157,7 +157,7 @@ internal static partial class Unit6iTests
                 TestRunner.Equal(ResidentPhase.Stopped, c.Phase);
                 AssertSameOwner(before!, f.State.Load()!);
                 TestRunner.Assert(!runB!.IsCompleted && f.Controller.Status().Ready);
-                TestRunner.Assert(c.Snapshot.Error?.Contains("\u307b\u304b\u306e\u5165\u53e3") == true);
+                TestRunner.Assert(c.Snapshot.Error?.Contains("\u5225\u306e\u30d7\u30ed\u30bb\u30b9\u306b\u3088\u308b\u52d5\u4f5c") == true);
             }
             finally
             {
@@ -337,7 +337,7 @@ internal static partial class Unit6iTests
                 release.TrySetResult();
                 await ResidentTests.Until(() => c.Phase == ResidentPhase.Stopped, "Automatic reconciliation did not stop its own tray.");
                 TestRunner.Equal("\u518d\u958b", Pause(c).Text);
-                TestRunner.Assert(c.Snapshot.Error?.Contains("\u307b\u304b\u306e\u5165\u53e3") == true);
+                TestRunner.Assert(c.Snapshot.Error?.Contains("\u5225\u306e\u30d7\u30ed\u30bb\u30b9\u306b\u3088\u308b\u52d5\u4f5c") == true);
                 if (preparing)
                 {
                     var progress = StartupPreparation.Read(f.State.PathName, f.Store.PathName);
@@ -377,7 +377,7 @@ internal static partial class Unit6iTests
                 TestRunner.Equal("\u518d\u958b", Pause(c).Text);
                 AssertSameOwner(before, f.State.Load()!);
                 TestRunner.Assert(f.Controller.Status().Ready && !runB.IsCompleted);
-                TestRunner.Assert(c.Snapshot.Error?.Contains("\u307b\u304b\u306e\u5165\u53e3") == true);
+                TestRunner.Assert(c.Snapshot.Error?.Contains("\u5225\u306e\u30d7\u30ed\u30bb\u30b9\u306b\u3088\u308b\u52d5\u4f5c") == true);
                 TestRunner.Equal(0, (await Task.Run(() => f.Cli("stop"))).Exit);
                 TestRunner.Equal(0, (await runB).Exit);
             }, (c, execute) =>

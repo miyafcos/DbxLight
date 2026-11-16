@@ -9,7 +9,7 @@ public sealed class SetupForm : DbxForm
     private readonly Label heading = Ui.Label("", true);
     private readonly Panel page = new() { Dock = DockStyle.Fill, AutoScroll = true };
     private readonly TextBox message = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical,
-        BackColor = SystemColors.Window, BorderStyle = BorderStyle.None, Text = "最後の段で確定するまで、接続設定は保存されません。" };
+        BackColor = SystemColors.Window, BorderStyle = BorderStyle.None, Text = "最後のステップで確定するまで、接続設定は保存されません。" };
     private readonly Button back, next, cancelLogin;
     private CancellationTokenSource operations = new();
     private ComboBox? drive, retention;
@@ -80,7 +80,7 @@ public sealed class SetupForm : DbxForm
                 body.Controls.Add(Ui.Label("読み取り専用で始めます。フォルダを見て、必要なファイルを開けます。"));
                 body.Controls.Add(Ui.Label("ここでは書き込みを有効にしません。あとで設定のスイッチから変更できます。"));
                 body.Controls.Add(Ui.Label("接続先：" + session.Draft.Remote));
-                body.Controls.Add(Ui.Label("割り当て先：" + session.Draft.MountPoint + "   手元に残す時間：" + session.Draft.Retention));
+                body.Controls.Add(Ui.Label("マウント先：" + session.Draft.MountPoint + "   ローカルに残す時間：" + session.Draft.Retention));
                 body.Controls.Add(Ui.Label("表示しないフォルダ：" + session.Draft.HiddenPaths.Length + " 件"));
                 break;
         }
@@ -88,7 +88,7 @@ public sealed class SetupForm : DbxForm
 
     private void Requirements(FlowLayoutPanel body)
     {
-        body.Controls.Add(Ui.Label("rclone と WinFsp を確認します。足りないものは下の命令で入れてください。"));
+        body.Controls.Add(Ui.Label("rclone と WinFsp を確認します。足りないものは下のコマンドでインストールしてください。"));
         foreach (string name in new[] { "rclone", "WinFsp" })
         {
             bool found = session.Checks.Any(c => c.Name == name && c.Passed);
@@ -97,7 +97,7 @@ public sealed class SetupForm : DbxForm
             {
                 string command = name == "rclone" ? "winget install --id Rclone.Rclone -e" : "winget install --id WinFsp.WinFsp -e";
                 body.Controls.Add(new TextBox { ReadOnly = true, Width = 640, Text = command });
-                body.Controls.Add(Ui.Button("命令をコピー", (_, _) => Clipboard.SetText(command)));
+                body.Controls.Add(Ui.Button("コマンドをコピー", (_, _) => Clipboard.SetText(command)));
             }
         }
         body.Controls.Add(Ui.Button("もう一度確認", (_, _) => { session.CheckRequirements(); Render(); }));
@@ -164,14 +164,14 @@ public sealed class SetupForm : DbxForm
 
     private void Options(FlowLayoutPanel body)
     {
-        body.Controls.Add(Ui.Label("割り当て先のドライブと、開いたファイルを手元に残す時間を選びます。"));
-        body.Controls.Add(Ui.Label("割り当て先"));
+        body.Controls.Add(Ui.Label("マウント先のドライブと、開いたファイルをローカルに残す時間を選びます。"));
+        body.Controls.Add(Ui.Label("マウント先"));
         drive = new ComboBox { Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
         drive.Items.AddRange(Enumerable.Range('D', 23).Select(c => ((char)c) + ":").Cast<object>().ToArray());
         drive.SelectedItem = session.Draft.MountPoint;
         if (drive.SelectedIndex < 0) drive.SelectedItem = "T:";
         body.Controls.Add(drive);
-        body.Controls.Add(Ui.Label("手元に残す時間"));
+        body.Controls.Add(Ui.Label("ローカルに残す時間"));
         retention = new ComboBox { Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
         retention.Items.AddRange(["30 分", "1 時間", "3 時間", "1 日", "1 週間"]);
         retention.SelectedIndex = Array.IndexOf(Retentions, session.Draft.Retention);
@@ -183,10 +183,10 @@ public sealed class SetupForm : DbxForm
             {
                 session.SetHidden(update(session.BrowsingConfig).HiddenPaths);
                 return Task.CompletedTask;
-            }, () => message.Text = "この窓の選択に取り込みました。最後の段で確定します。");
+            }, () => message.Text = "この画面の選択に取り込みました。最後のステップで確定します。");
             hidden.ShowDialog(this);
         }));
-        body.Controls.Add(Ui.Label("表示しないフォルダ：" + session.Draft.HiddenPaths.Length + " 件。最後の段でまとめて保存します。"));
+        body.Controls.Add(Ui.Label("表示しないフォルダ：" + session.Draft.HiddenPaths.Length + " 件。最後のステップでまとめて保存します。"));
     }
 
     private void SaveOptions()

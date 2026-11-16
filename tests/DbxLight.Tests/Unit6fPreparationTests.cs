@@ -82,7 +82,7 @@ internal static partial class Unit6fTests
             if (reader == "core")
             {
                 var status = f.Controller.Status();
-                TestRunner.Assert(status.Preparation is { Stage: "取り出し" });
+                TestRunner.Assert(status.Preparation is { Stage: "退避" });
             }
             else if (reader == "cli")
             {

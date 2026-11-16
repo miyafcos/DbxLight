@@ -64,7 +64,7 @@ internal static class SmokeRunner
                 }
                 await resident.ApplyConfigAsync(c => c with { WriteAllowedRemotes = [remote] });
                 await Task.Run(Track);
-                await Task.Run(() => File.WriteAllText(Path.Combine(MountPaths.CanonicalMount(drive), "上げ待ち サンプル.txt"), "local smoke queue", new UTF8Encoding(false)));
+                await Task.Run(() => File.WriteAllText(Path.Combine(MountPaths.CanonicalMount(drive), "アップロード待ち サンプル.txt"), "local smoke queue", new UTF8Encoding(false)));
                 var wait = Stopwatch.StartNew();
                 do { await Task.Delay(200); await resident.RefreshAsync(); }
                 while (resident.Snapshot.Status.UploadsQueued != 1 && wait.Elapsed < TimeSpan.FromSeconds(15));
@@ -107,7 +107,7 @@ internal static class SmokeRunner
                     new() { Id = "sample-conflict", TrustedConfig = SampleConfig(resident.Config), CloudPath = "\u5171\u6709/\u539f\u7a3f.txt",
                         OriginalPath = @"D:\Sample\cache\draft.txt", RecordPath = @"D:\Sample\rescue\.dbxl-records\sample2.json",
                         DestinationPath = @"D:\Sample\rescue\20261113\原稿.txt",
-                        Reason = "\u5143\u306b\u3057\u305f\u96f2\u306e\u5074\u306e\u30d5\u30a1\u30a4\u30eb\u304c\u66f4\u65b0\u3055\u308c\u3066\u3044\u307e\u3059\u3002",
+                        Reason = "\u5143\u306b\u3057\u305f Dropbox \u4e0a\u306e\u30d5\u30a1\u30a4\u30eb\u304c\u66f4\u65b0\u3055\u308c\u3066\u3044\u307e\u3059\u3002",
                         Conflict = true, CompleteData = true, MoveCompleted = true }
                 };
                 foreach (int percent in new[] { 100, 150 })
@@ -142,7 +142,7 @@ internal static class SmokeRunner
                 {
                     using var form = new StatusForm();
                     var sample = SampleSnapshot(recovery, resident.Config);
-                    var progress = new PreparationProgress("雲との照合", 12, 40, DateTimeOffset.UtcNow, false);
+                    var progress = new PreparationProgress("Dropbox 上との照合", 12, 40, DateTimeOffset.UtcNow, false);
                     form.UpdateSnapshot(sample with { Status = sample.Status with { Running = false, Ready = false,
                         RecoveryRequired = false, RecoveryLocation = null, Preparation = progress, RescueCountsKnown = false, LogCapture = new() }, Rescued = [] }, null, SampleConfig(resident.Config));
                     await CaptureAsync(form, Path.Combine(output, "status-preparing-" + percent + ".png"), percent, evidence);
@@ -153,7 +153,7 @@ internal static class SmokeRunner
                     var sample = SampleSnapshot(resident.Snapshot, resident.Config);
                     form.UpdateSnapshot(sample with { Queue = [], QueueKnown = false, Errors = [ErrorLogTail.ProviderError], Error = null,
                         LogReadSucceeded = false, Status = sample.Status with
-                        { LogCapture = new(true, false, "記録はありますが読めません。失敗の有無を確認できません。", @"D:\Sample\logs") } },
+                        { LogCapture = new(true, false, "ログはありますが読めません。失敗の有無を確認できません。", @"D:\Sample\logs") } },
                         null, SampleConfig(resident.Config));
                     await CaptureAsync(form, Path.Combine(output, "status-log-unreadable-" + percent + ".png"), percent, evidence);
                 }
@@ -415,7 +415,7 @@ internal static class SmokeRunner
         using var bitmap = new Bitmap(720, 128);
         using Graphics g = Graphics.FromImage(bitmap);
         g.Clear(SystemColors.Window);
-        string[] names = ["稼働", "上げている途中", "注意", "失敗か停止", "準備中"];
+        string[] names = ["稼働", "アップロード中", "注意", "失敗または停止", "準備中"];
         for (int i = 0; i < 5; i++)
         {
             using Bitmap small = TrayIconFactory.Draw((TrayState)i, 16);

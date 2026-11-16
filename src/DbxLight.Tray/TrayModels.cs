@@ -76,8 +76,8 @@ public static class TrayPresentation
 {
     public static TimeSpan PollInterval(DbxStatus status, bool waitingToStop = false) =>
         TimeSpan.FromSeconds(waitingToStop || status.UploadsQueued > 0 || status.UploadsInProgress > 0 ? 5 : 30);
-    public static string StopWaiting(long queued) => $"上げ待ちが {queued} 件あります。上げ終わるまで待ちます";
-    public const string ForceExplanation = "同じ設定で起動し直すと、停止中のキャッシュを走査します。危ない物は取り出して残し、健全な未送信は起動直前に照合します。\n取り出した物は、保存先で内容を確認し、必要な内容をドライブの元の場所へ自分で戻してください。";
+    public static string StopWaiting(long queued) => $"アップロード待ちが {queued} 件あります。アップロードが終わるまで待ちます";
+    public const string ForceExplanation = "同じ設定で起動し直すと、停止中のキャッシュを走査します。問題のあるファイルは退避して残し、問題のない未アップロードのファイルは起動直前に照合します。\n退避したファイルは、保存先で内容を確認し、必要な内容をドライブの元の場所へ自分で戻してください。";
     public static bool ReadOnly(DbxConfig config) => !config.WriteAllowedRemotes.Contains(config.Remote, StringComparer.Ordinal);
     public static TrayState State(TraySnapshot snapshot, bool preparing = false)
     {
@@ -97,9 +97,9 @@ public static class TrayPresentation
         string text = preparing ? "DbxLight 準備中" : !snapshot.Status.Running ? "DbxLight 停止中" :
             snapshot.Status.ErroredFiles > 0 ? $"失敗 {snapshot.Status.ErroredFiles} 件" :
             snapshot.Queue.Any(q => q.Tries > 0) ? $"失敗 {snapshot.Queue.Count(q => q.Tries > 0)} 件" :
-            snapshot.Status.DownloadActivity is { Exceeded: true } downloads ? $"取得が多い {downloads.Files} 件" :
-            snapshot.Status.UploadsQueued > 0 ? $"上げ待ち {snapshot.Status.UploadsQueued} 件" :
-            snapshot.Status.UploadsInProgress > 0 ? $"上げている途中 {snapshot.Status.UploadsInProgress} 件" :
+            snapshot.Status.DownloadActivity is { Exceeded: true } downloads ? $"ダウンロードが多い {downloads.Files} 件" :
+            snapshot.Status.UploadsQueued > 0 ? $"アップロード待ち {snapshot.Status.UploadsQueued} 件" :
+            snapshot.Status.UploadsInProgress > 0 ? $"アップロード中 {snapshot.Status.UploadsInProgress} 件" :
             snapshot.Error is not null ? "DbxLight 状態を確認できません" : "DbxLight 稼働中";
         return text + (ReadOnly(config) ? " (読み取り専用)" : "");
     }
@@ -115,7 +115,7 @@ public static class TrayPresentation
         string text = State(snapshot) switch
         {
             TrayState.Running => "稼働中",
-            TrayState.Uploading => "上げている途中",
+            TrayState.Uploading => "アップロード中",
             TrayState.Attention => "注意が必要です",
             TrayState.Failed => snapshot.Status.Running ? "失敗があります" : "停止中",
             _ => snapshot.Confirming ? "確認中" : "準備中"
@@ -127,17 +127,17 @@ public static class TrayPresentation
         bytes >= 1024 * 1024 ? $"{bytes / (1024d * 1024):0.0} MB" : $"{bytes:N0} バイト";
     public static string QueueAgeExplanation(TraySnapshot snapshot, QueueAge? age)
     {
-        if (snapshot.Status.Preparation is not null) return "起動の準備中は、上げ待ちの件数と時間を確認できません。";
-        if (snapshot.Status.RecoveryRequired) return "\u56de\u5fa9\u524d\u306e\u4e0a\u3052\u5f85\u3061\u306e\u4ef6\u6570\u3068\u6642\u9593\u306f\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002";
+        if (snapshot.Status.Preparation is not null) return "起動の準備中は、アップロード待ちの件数と時間を確認できません。";
+        if (snapshot.Status.RecoveryRequired) return "\u56de\u5fa9\u524d\u306e\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u5f85\u3061\u306e\u4ef6\u6570\u3068\u6642\u9593\u306f\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002";
         bool empty = snapshot.QueueKnown && snapshot.Queue.Count == 0 && snapshot.Error is null &&
             !snapshot.Status.ProcessUncertain && snapshot.Status.StatusError is null &&
             snapshot.Status.UploadsQueued == 0 && snapshot.Status.UploadsInProgress == 0;
-        return "\u3044\u3061\u3070\u3093\u53e4\u3044\u4e0a\u3052\u5f85\u3061: " +
+        return "\u3044\u3061\u3070\u3093\u53e4\u3044\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u5f85\u3061: " +
             (empty || snapshot.QueueKnown && age is not null ? Age(age) : "\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093") +
             (empty ? "" : "\n\u8868\u793a\u3057\u305f\u6642\u9593\u3088\u308a\u524d\u304b\u3089\u5f85\u3063\u3066\u3044\u305f\u53ef\u80fd\u6027\u304c\u3042\u308a\u307e\u3059\u3002");
     }
 
-    public static string Age(QueueAge? age) => age is null ? "上げ待ちはありません" :
+    public static string Age(QueueAge? age) => age is null ? "アップロード待ちはありません" :
         (age.PresentAtStartup ? "起動時から " : "初めて確認してから ") + $"{Math.Floor(age.Elapsed.TotalMinutes):0} 分";
 }
 
@@ -202,7 +202,7 @@ public sealed record LogTail(IReadOnlyList<string> Errors, IReadOnlyList<string>
 public static class ErrorLogTail
 {
     public const string ProviderError = "rclone \u306e\u51e6\u7406\u3067\u30a8\u30e9\u30fc\u304c\u8a18\u9332\u3055\u308c\u3066\u3044\u307e\u3059\u3002\u72b6\u614b\u3068\u63a5\u7d9a\u5148\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
-    public const string StartupNotice = "\u8d77\u52d5\u6642\u306e\u30ea\u30f3\u30af\u6a5f\u80fd\u306e\u78ba\u8a8d\u3067\u3059\uff08\u5185\u5bb9\u306e\u53d6\u5f97\u30fb\u4fdd\u5b58\u3067\u306f\u3042\u308a\u307e\u305b\u3093\uff09\u3002";
+    public const string StartupNotice = "\u8d77\u52d5\u6642\u306e\u30ea\u30f3\u30af\u6a5f\u80fd\u306e\u78ba\u8a8d\u3067\u3059\uff08\u5185\u5bb9\u306e\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u30fb\u4fdd\u5b58\u3067\u306f\u3042\u308a\u307e\u305b\u3093\uff09\u3002";
     private static readonly object Sync = new();
     private static readonly Regex StartupProbe = new(@"^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? )?ERROR : symlinks not supported without the --links flag: /$", RegexOptions.CultureInvariant);
     public static IReadOnlyList<string> Read(string? logDir) => ReadDetails(logDir).Errors;

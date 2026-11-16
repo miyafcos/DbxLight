@@ -13,7 +13,7 @@ public static class GuardedStop
             DbxStatus status = controller.Status();
             long? count = status.UploadsQueued is { } queued && status.UploadsInProgress is { } uploading ? queued + uploading : null;
             return new(false, count, count is { } n ? TrayPresentation.StopWaiting(n) :
-                "上げ待ちを確認できないため、停止しません。接続が戻るまで待ちます。");
+                "アップロード待ちを確認できないため、停止しません。接続が戻るまで待ちます。");
         }
     }
 }

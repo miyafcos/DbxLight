@@ -11,7 +11,7 @@ public sealed partial class MountController
     private RuntimeState ResolveLaunch(RuntimeState state)
     {
         if (!state.LaunchPending) return state;
-        if (state.IdentityVersion != 1) throw new PendingUploadsException("古い起動の印の同一性を確認できません。手動の回復確認が必要です。");
+        if (state.IdentityVersion != 1) throw new PendingUploadsException("古い起動マークの同一性を確認できません。手動の回復確認が必要です。");
         if (state.RclonePid <= 0)
         {
             // PID is recorded before ResumeThread. An intent's unrecorded child can
@@ -23,18 +23,18 @@ public sealed partial class MountController
         if (state.LaunchPhase is not (StartupPhase.RecordedSuspended or StartupPhase.Resumed) ||
             !ProcessIdentity.CompleteRecord(state.RclonePid, state.ProcessStartedUtc, state.ExecutablePath) ||
             !ProcessIdentity.CompleteRecord(state.LaunchParentPid, state.LaunchParentStartedUtc, state.LaunchParentExecutablePath))
-            throw new PendingUploadsException("起動の印の子の同一性または段階を確認できません。手動の回復確認が必要です。");
+            throw new PendingUploadsException("起動マークの子プロセスの同一性または段階を確認できません。手動の回復確認が必要です。");
         using var child = ExplainOtherOwner(state, () => ProcessIdentity.Open(state));
         if (child is null) return FinishLaunchProof(state, "recorded_child_exited", stopped: true);
         if (state.LaunchPhase == StartupPhase.Resumed)
             return FinishLaunchProof(state, "resumed_child_identified", stopped: false);
         bool? suspended = ThreadsSuspended(child);
         if (suspended is null)
-            throw new PendingUploadsException("記録した子のスレッドの状態を確認できません。起動の印を残します。");
+            throw new PendingUploadsException("記録した子プロセスのスレッドの状態を確認できません。起動マークを残します。");
         if (!suspended.Value)
             return FinishLaunchProof(state, "recorded_running_child_adopted", stopped: false);
         if (!ParentStopped(state))
-            throw new PendingUploadsException("起動中の親が停止したと確かめられないため、印を残して断ります。");
+            throw new PendingUploadsException("起動中の親プロセスが停止したと確認できないため、起動マークを残して断ります。");
         child.Kill();
         if (!child.WaitForExit(10000)) throw new PendingUploadsException("The recorded suspended child did not exit; retain the launch marker.");
         return FinishLaunchProof(state, "recorded_suspended_child_terminated", stopped: true);

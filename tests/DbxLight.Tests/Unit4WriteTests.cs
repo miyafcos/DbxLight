@@ -89,7 +89,7 @@ internal static partial class Unit4Tests
     {
         using var form = new WriteConfirmationForm("dbxlight:");
         string text = string.Join("\n", Controls(form).Select(c => c.Text));
-        foreach (string expected in new[] { "少し遅れて", "取り出して残し", "30 秒以内", "競合コピーを作りません", "先に保存した人の変更が失われる", "自分で戻してください", "公式の Dropbox アプリ", "同時" }) TestRunner.Assert(text.Contains(expected));
+        foreach (string expected in new[] { "少し遅れて", "退避して残し", "30 秒以内", "競合コピーを作りません", "先に保存した人の変更が失われる", "自分で戻してください", "公式の Dropbox アプリ", "同時" }) TestRunner.Assert(text.Contains(expected));
         TestRunner.Equal(DialogResult.None, form.DialogResult);
         form.ShowInTaskbar = false; form.StartPosition = FormStartPosition.Manual; form.Location = new(-20000, -20000);
         form.Show();

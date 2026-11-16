@@ -29,7 +29,7 @@ public sealed class HiddenFoldersForm : DbxForm
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        column.Controls.Add(Ui.Label("この PC の見え方だけを変えます。雲の中身と、ほかの人の見え方は変わりません。"), 0, 0);
+        column.Controls.Add(Ui.Label("この PC の見え方だけを変えます。Dropbox 上のファイルと、ほかの人の見え方は変わりません。"), 0, 0);
         column.Controls.Add(message, 0, 1);
         column.Controls.Add(tree, 0, 2);
         column.Controls.Add(changes, 0, 3);
@@ -60,7 +60,7 @@ public sealed class HiddenFoldersForm : DbxForm
     public async Task LoadRootAsync()
     {
         tree.Nodes.Clear();
-        var root = new TreeNode("雲のフォルダ") { Tag = "", Checked = true };
+        var root = new TreeNode("Dropbox 上のフォルダ") { Tag = "", Checked = true };
         root.Nodes.Add(Placeholder()); tree.Nodes.Add(root);
         await LoadChildrenAsync(root);
         if (!IsDisposed && loaded.Contains(root)) root.Expand();
@@ -126,7 +126,7 @@ public sealed class HiddenFoldersForm : DbxForm
                     !c.Remote.Equals(original.Remote, StringComparison.Ordinal) ||
                     !c.MountPoint.Equals(original.MountPoint, StringComparison.OrdinalIgnoreCase) ||
                     !string.Equals(c.RcloneConfigPath, original.RcloneConfigPath, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("別の操作で設定が変わりました。この窓を開き直してください。");
+                    throw new InvalidOperationException("別の操作で設定が変わりました。この画面を開き直してください。");
                 return c with { HiddenPaths = paths };
             });
             selection.Accept(); changes.Text = "表示しないにする 0 件、表示に戻す 0 件";
@@ -138,7 +138,7 @@ public sealed class HiddenFoldersForm : DbxForm
     public async Task ExpandFirstFolderAsync()
     {
         await LoadedRoot;
-        if (tree.Nodes.Count == 0 || !loaded.Contains(tree.Nodes[0])) throw new IOException("フォルダの木を読み込めませんでした。" + message.Text);
+        if (tree.Nodes.Count == 0 || !loaded.Contains(tree.Nodes[0])) throw new IOException("フォルダツリーを読み込めませんでした。" + message.Text);
         TreeNode? folder = tree.Nodes[0].Nodes.Cast<TreeNode>().FirstOrDefault(n => n.Tag is string);
         if (folder is null) throw new IOException("試験用のフォルダが見つかりません。");
         await LoadChildrenAsync(folder);

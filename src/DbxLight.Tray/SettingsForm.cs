@@ -41,7 +41,7 @@ public sealed class SettingsForm : DbxForm
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         column.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var explanation = Ui.Label("開いたファイルを手元に残す時間と、使うドライブを選びます。\n上げ待ちがある間は、設定を変更できません。\n取り出し先をキャッシュと別のボリュームにすると、移動に時間がかかることがあります。");
+        var explanation = Ui.Label("開いたファイルをローカルに残す時間と、使うドライブを選びます。\nアップロード待ちがある間は、設定を変更できません。\n退避先をキャッシュと別のボリュームにすると、移動に時間がかかることがあります。");
         column.Controls.Add(permission, 0, 0);
         column.Controls.Add(explanation, 0, 1);
         column.Controls.Add(Ui.Label("remote を変えても、書き込みを許すリモートの一覧になければ読み取り専用です。"), 0, 2);
@@ -56,8 +56,8 @@ public sealed class SettingsForm : DbxForm
         remote.Text = config.Remote; cacheLimit.Text = config.CacheMaxSize; cacheDir.Text = config.CacheDir;
         (string Title, Control Input)[] rows =
         [
-            ("雲の置き場 (remote)", remote), ("手元に残す時間", retention), ("キャッシュの上限 (例: 5G)", cacheLimit),
-            ("キャッシュの置き場", cacheDir), ("割り当て先", drive), ("自動起動", autoStart)
+            ("接続先 (remote)", remote), ("ローカルに残す時間", retention), ("キャッシュの上限 (例: 5G)", cacheLimit),
+            ("キャッシュの保存先", cacheDir), ("マウント先", drive), ("自動起動", autoStart)
         ];
         for (int i = 0; i < rows.Length; i++)
         {
@@ -77,7 +77,7 @@ public sealed class SettingsForm : DbxForm
         signOut.Click += async (_, _) =>
         {
             if (logout is null || MessageBox.Show(this,
-                "割り当てを止めて、接続先から外します。専用のログインで使った鍵も消します。",
+                "マウントを止めて、接続先から外します。専用のログインで使った認証情報も消します。",
                 "ログアウト", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             signOut.Enabled = loginAgain.Enabled = apply.Enabled = false;
             try { await logout(); remote.Text = ""; result.Text = "ログアウトしました。"; }
@@ -102,9 +102,9 @@ public sealed class SettingsForm : DbxForm
         DbxConfig active = snapshot.Status.Running ? snapshot.ActiveConfig ?? config : config;
         writeEnabled.Checked = active.WriteAllowedRemotes.Contains(active.Remote, StringComparer.Ordinal);
         writeEnabled.Enabled = writeAccess is not null && !snapshot.Confirming && !string.IsNullOrWhiteSpace(config.Remote);
-        permission.Text = "\u73fe\u5728\u306e\u5272\u308a\u5f53\u3066: " + TrayPresentation.Permission(snapshot, config)
+        permission.Text = "\u73fe\u5728\u306e\u30de\u30a6\u30f3\u30c8: " + TrayPresentation.Permission(snapshot, config)
             + (!snapshot.Confirming && !snapshot.Status.Running ? " (\u505c\u6b62\u4e2d\u306e\u8a2d\u5b9a)" : "")
-            + (!snapshot.Confirming && TrayPresentation.ReadOnly(active) ? "\n新しい保存はできません。前から残っている未送信は送られることがあります。" : "");
+            + (!snapshot.Confirming && TrayPresentation.ReadOnly(active) ? "\n新しい保存はできません。前から残っている未アップロードのファイルは送信されることがあります。" : "");
         if (noticeMount != config.MountPoint)
         {
             noticeMount = config.MountPoint;
@@ -148,7 +148,7 @@ public sealed class SettingsForm : DbxForm
         try
         {
             string newRemote = remote.Text.Trim(), newCache = cacheDir.Text.Trim(), limit = cacheLimit.Text.Trim();
-            string newDrive = (string?)drive.SelectedItem ?? throw new ArgumentException("割り当て先を選んでください。");
+            string newDrive = (string?)drive.SelectedItem ?? throw new ArgumentException("マウント先を選んでください。");
             string keep = Retentions[retention.SelectedIndex];
             await save(c => c with { Remote = newRemote, Retention = keep, CacheDir = newCache, CacheMaxSize = limit, MountPoint = newDrive });
             // Registration is changed only after the guarded config update succeeds.

@@ -76,7 +76,7 @@ internal static class PrivateStateFiles
         catch (FileNotFoundException) { return; }
         catch (DirectoryNotFoundException) { return; }
         if ((File.GetAttributes(file) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
-            throw StartupFailure.PrivateStorage(file, "本人専用の普通のファイルとして使えません。");
+            throw StartupFailure.PrivateStorage(file, "本人専用の通常のファイルとして使えません。");
         Validate(new FileInfo(file).GetAccessControl(), file, requireProtected: false);
     }
 

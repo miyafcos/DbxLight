@@ -99,7 +99,7 @@ internal static class Unit3bTests
         {
             using var form = new StatusForm(); form.UpdateSnapshot(snapshot, null, f.Baseline);
             TestRunner.Assert(FormTests.Field<TextBox>(form, "recovery").Text.Contains(f.Baseline.CacheDir, StringComparison.Ordinal));
-            TestRunner.Assert(!FormTests.Field<Label>(form, "oldest").Text.Contains("\u4e0a\u3052\u5f85\u3061\u306f\u3042\u308a\u307e\u305b\u3093", StringComparison.Ordinal), "Recovery status incorrectly says there are no pending files.");
+            TestRunner.Assert(!FormTests.Field<Label>(form, "oldest").Text.Contains("\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u5f85\u3061\u306f\u3042\u308a\u307e\u305b\u3093", StringComparison.Ordinal), "Recovery status incorrectly says there are no pending files.");
         });
         RuntimeSnapshots.Save(f.State, state with { RecoveryRequired = false, StopDisposition = StopDisposition.ClearedByUser });
         TestRunner.Assert(!SnapshotReader.IsCurrent(f.Controller, snapshot), "An older recovery state with the same PID was still accepted for display.");

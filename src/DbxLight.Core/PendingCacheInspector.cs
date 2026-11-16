@@ -66,7 +66,7 @@ public static class PendingCacheInspector
                     }
                     else if (ranges.ValueKind != JsonValueKind.Null) throw new InvalidDataException("\u7ba1\u7406\u60c5\u5831\u306e\u7bc4\u56f2\u3092\u8aad\u307f\u53d6\u308c\u307e\u305b\u3093\u3002");
                     long physicalSize = new FileInfo(body!).Length;
-                    if (physicalSize != size) throw new InvalidDataException("\u672c\u4f53\u3068\u7ba1\u7406\u60c5\u5831\u306e\u5927\u304d\u3055\u304c\u4e00\u81f4\u3057\u307e\u305b\u3093\u3002");
+                    if (physicalSize != size) throw new InvalidDataException("\u30d5\u30a1\u30a4\u30eb\u672c\u4f53\u3068\u7ba1\u7406\u60c5\u5831\u306e\u5927\u304d\u3055\u304c\u4e00\u81f4\u3057\u307e\u305b\u3093\u3002");
                     entry = entry with { MetadataValid = true, Dirty = item.GetProperty("Dirty").GetBoolean(), Size = size,
                         ModTime = DateTimeOffset.Parse(item.GetProperty("ModTime").GetString()!, CultureInfo.InvariantCulture),
                         Fingerprint = item.GetProperty("Fingerprint").GetString(), CompleteData = covered == size };

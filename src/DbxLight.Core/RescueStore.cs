@@ -35,16 +35,16 @@ public sealed record RescueRecord
     public DbxConfig Origin { get; init; } = new();
     public bool NotificationShown { get; init; }
     public bool Acknowledged { get; init; }
-    public string NextAction => RecordStatus == "unknown" ? "記録の場所と取り出した本体を確認してください。" :
-        IsForeign ? "元の設定で取り出し先を確認してください。" :
-        !CompleteData ? "保存先の本体と管理情報から内容を確認・復元し、ドライブの元の場所へ自分で戻してください。" :
+    public string NextAction => RecordStatus == "unknown" ? "記録の場所と退避したファイル本体を確認してください。" :
+        IsForeign ? "元の設定で退避先を確認してください。" :
+        !CompleteData ? "保存先のファイル本体と管理情報から内容を確認・復元し、ドライブの元の場所へ自分で戻してください。" :
         Conflict ? "保存先とドライブの元の場所を開いて見比べ、必要な内容を自分で戻してください。" :
         "保存先からドライブの元の場所へ自分で戻してください。";
 }
 
 public sealed record RescueNotice(int Unacknowledged = 0, int UnknownRecords = 0, int ForeignRecords = 0)
 {
-    public string Hint => "取り出した物は上がっていません。dbxl rescue list --json で理由と保存先を確認してください。";
+    public string Hint => "退避したファイルはアップロードされていません。dbxl rescue list --json で理由と保存先を確認してください。";
 }
 
 internal sealed record AcknowledgedRescues(string[] Paths, Dictionary<string, string> Stamps);
@@ -91,7 +91,7 @@ internal static class RescueStore
         var own = records.Where(r => !r.IsForeign).ToList();
         int count = records.Count(r => r.IsForeign);
         if (count > 0) own.Add(new RescueRecord { IsForeign = true, ForeignCount = count, Origin = null!,
-            Reason = "\u307b\u304b\u306e\u8a2d\u5b9a\u306e\u7269" });
+            Reason = "\u307b\u304b\u306e\u8a2d\u5b9a\u306e\u30d5\u30a1\u30a4\u30eb" });
         return own;
     }
 
@@ -245,7 +245,7 @@ internal static class RescueStore
         // DACL without that privilege. A same-owner, protected DACL is sufficient.
         var file = new FileInfo(path);
         if (!PrivateStateFiles.CurrentSid.Equals(file.GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(System.Security.Principal.SecurityIdentifier))))
-            throw StartupFailure.PrivateStorage(path, "取り出し元が本人の所有ではないため動かせません。");
+            throw StartupFailure.PrivateStorage(path, "退避元が本人の所有ではないため動かせません。");
         var acl = new FileSecurity(); acl.SetAccessRuleProtection(true, false);
         acl.AddAccessRule(new FileSystemAccessRule(PrivateStateFiles.CurrentSid, FileSystemRights.FullControl, AccessControlType.Allow));
         file.SetAccessControl(acl);

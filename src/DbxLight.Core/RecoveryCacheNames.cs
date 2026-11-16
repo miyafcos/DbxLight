@@ -23,7 +23,7 @@ internal static class RecoveryCacheNames
         relative = decoded; return true;
     }
     internal static string? PreservationReason(string encoded) => encoded.Contains(Quote)
-        ? "名前に全角の記号（：？＊｜＜＞＼＂）か「‛」を含む物は、自動では上げ直さず、取り出して残します。" : null;
+        ? "名前に全角の記号（：？＊｜＜＞＼＂）か「‛」を含むファイルは、自動では再アップロードせず、退避して残します。" : null;
 
     private static bool DecodeComponent(string encoded, out string decoded)
     {

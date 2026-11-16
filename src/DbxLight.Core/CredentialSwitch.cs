@@ -46,7 +46,7 @@ internal static partial class CredentialSwitch
         return Path.Combine(Path.GetDirectoryName(configPath)!, ".dbxl-login-" + key);
     }
     private static bool Equal(DbxConfig a, DbxConfig b) => JsonSerializer.Serialize(a, JsonFiles.Options) == JsonSerializer.Serialize(b, JsonFiles.Options);
-    internal static PendingUploadsException NeedsLogin() => new("\u9375\u3068\u8a2d\u5b9a\u306e\u5207\u308a\u66ff\u3048\u3092\u78ba\u304b\u3081\u3089\u308c\u307e\u305b\u3093\u3002\u5272\u308a\u5f53\u3066\u3092\u59cb\u3081\u305a\u3001\u30ed\u30b0\u30a4\u30f3\u3057\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+    internal static PendingUploadsException NeedsLogin() => new("\u8a8d\u8a3c\u60c5\u5831\u3068\u8a2d\u5b9a\u306e\u5207\u308a\u66ff\u3048\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002\u30de\u30a6\u30f3\u30c8\u3092\u958b\u59cb\u305b\u305a\u3001\u30ed\u30b0\u30a4\u30f3\u3057\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
 
     internal static void RefuseMount(string configPath)
     {

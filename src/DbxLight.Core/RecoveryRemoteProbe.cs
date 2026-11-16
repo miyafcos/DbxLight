@@ -53,7 +53,7 @@ internal sealed class RecoveryRemoteProbe(DbxConfig config, RecoveryBudget? budg
         // A missing root is unavailable, not proof that all original objects were deleted.
         JsonElement? root = Stat("");
         if (root is null || !root.Value.GetProperty("IsDir").GetBoolean())
-            throw new RecoveryComparisonException("\u96f2\u306e\u5074\u306e\u6839\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002");
+            throw new RecoveryComparisonException("Dropbox \u4e0a\u306e\u30eb\u30fc\u30c8\u30d5\u30a9\u30eb\u30c0\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002");
         return DecodeInfo(info);
     }
 
@@ -237,12 +237,12 @@ internal sealed class RecoveryRemoteProbe(DbxConfig config, RecoveryBudget? budg
         {
             process.Kill(); if (!process.WaitForExit(10000)) throw new RecoveryComparisonException("Owned comparison helper did not stop.");
             Check();
-            throw new RecoveryComparisonException("\u96f2\u306e\u5074\u306e\u7167\u5408\u304c\u6642\u9593\u5207\u308c\u3067\u3059\u3002\u672a\u9001\u4fe1\u3092\u4fdd\u5168\u3057\u3001\u9593\u3092\u7a7a\u3051\u3066\u3084\u308a\u76f4\u3057\u307e\u3059\u3002");
+            throw new RecoveryComparisonException("Dropbox \u4e0a\u3068\u306e\u7167\u5408\u304c\u6642\u9593\u5207\u308c\u3067\u3059\u3002\u672a\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u306e\u30d5\u30a1\u30a4\u30eb\u3092\u4fdd\u5168\u3057\u3001\u9593\u3092\u7a7a\u3051\u3066\u3084\u308a\u76f4\u3057\u307e\u3059\u3002");
         }
         string json = output.GetAwaiter().GetResult(); error.GetAwaiter().GetResult();
         Check();
         if (process.ExitCode != 0)
-            throw new RecoveryComparisonException($"\u96f2\u306e\u5074\u3092\u7167\u5408\u3067\u304d\u307e\u305b\u3093\uff08\u7d42\u4e86\u5024 {process.ExitCode}\uff09\u3002\u672a\u9001\u4fe1\u3092\u4fdd\u5168\u3057\u3001\u8d77\u52d5\u3057\u307e\u305b\u3093\u3002");
+            throw new RecoveryComparisonException($"Dropbox \u4e0a\u3068\u7167\u5408\u3067\u304d\u307e\u305b\u3093\uff08\u7d42\u4e86\u5024 {process.ExitCode}\uff09\u3002\u672a\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u306e\u30d5\u30a1\u30a4\u30eb\u3092\u4fdd\u5168\u3057\u3001\u8d77\u52d5\u3057\u307e\u305b\u3093\u3002");
         return json;
     }
 }

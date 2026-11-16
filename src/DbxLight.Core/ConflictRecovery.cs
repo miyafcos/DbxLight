@@ -13,8 +13,8 @@ public sealed partial class MountController
     public void AcknowledgeRescue(string id) => ControlGate.Execute(() =>
     {
         RescueRecord record = RescueList(null).SingleOrDefault(r => r.Id == id && r.RecordStatus == "verified")
-            ?? throw new InvalidOperationException("確認できる取り出し記録を指定してください。");
-        if (!record.MoveCompleted) throw new InvalidOperationException("取り出し途中です。先に起動前の走査を完了してください。");
+            ?? throw new InvalidOperationException("確認できる退避記録を指定してください。");
+        if (!record.MoveCompleted) throw new InvalidOperationException("退避途中です。先に起動前の走査を完了してください。");
         RescueStore.Save(record with { Acknowledged = true });
         return 0;
     });

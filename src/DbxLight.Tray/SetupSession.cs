@@ -58,7 +58,7 @@ public sealed class SetupSession : IDisposable
 
     private async Task<LoginResult> AuthorizeCoreAsync(bool overwriteConfirmed, CancellationToken cancellation)
     {
-        if (Step != SetupStep.Login) throw new InvalidOperationException("ログインの段を開いてください。");
+        if (Step != SetupStep.Login) throw new InvalidOperationException("ログインのステップを開いてください。");
         await Task.Run(() => controller.PrepareConnectionChange(Original), cancellation).ConfigureAwait(false);
         if (fileChange is null && await NeedsOverwriteAsync(cancellation).ConfigureAwait(false) && !overwriteConfirmed)
             return new(LoginOutcome.Failed, "dbxlight が既にあります。上書きの確認後にログインしてください。");
@@ -85,7 +85,7 @@ public sealed class SetupSession : IDisposable
 
     public async Task UseExistingRemoteAsync(string name, CancellationToken cancellation = default)
     {
-        if (Step != SetupStep.Login) throw new InvalidOperationException("ログインの段を開いてください。");
+        if (Step != SetupStep.Login) throw new InvalidOperationException("ログインのステップを開いてください。");
         IReadOnlyList<string> names = await ExistingRemotesAsync(cancellation).ConfigureAwait(false);
         if (!names.Contains(name, StringComparer.Ordinal)) throw new ArgumentException("一覧から接続先を選んでください。");
         await Task.Run(() => controller.PrepareConnectionChange(Original), cancellation).ConfigureAwait(false);
@@ -98,7 +98,7 @@ public sealed class SetupSession : IDisposable
 
     public async Task SelectScopeAsync(bool teamRoot, CancellationToken cancellation = default)
     {
-        if (Step != SetupStep.Scope || !Connected) throw new InvalidOperationException("見える範囲の段を開いてください。");
+        if (Step != SetupStep.Scope || !Connected) throw new InvalidOperationException("見える範囲のステップを開いてください。");
         ScopeVerified = false; Folders = [];
         string own = Draft.Remote.TrimEnd('/');
         Draft = Draft with { Remote = own + (teamRoot ? "/" : "") };
@@ -127,7 +127,7 @@ public sealed class SetupSession : IDisposable
 
     public void SetOptions(string mountPoint, string retention)
     {
-        if (Step != SetupStep.Options) throw new InvalidOperationException("この PC での使い方の段を開いてください。");
+        if (Step != SetupStep.Options) throw new InvalidOperationException("この PC での使い方のステップを開いてください。");
         Draft = (Draft with { MountPoint = mountPoint, NetworkMode = true, Retention = retention }).Validate();
     }
 
@@ -136,7 +136,7 @@ public sealed class SetupSession : IDisposable
     public DbxConfig Commit()
     {
         if (Step != SetupStep.Finish || !Connected || !ScopeVerified)
-            throw new InvalidOperationException("フォルダを確認し、最後の段まで進んでください。");
+            throw new InvalidOperationException("フォルダを確認し、最後のステップまで進んでください。");
         PrivateStateFiles.EnsureParent(login.ConfigPath);
         DbxConfig saved = fileChange is null
             ? controller.ApplyConnectionChange(Original, _ => Draft with { WriteAllowedRemotes = [] })

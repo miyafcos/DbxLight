@@ -161,8 +161,8 @@ internal static partial class Unit6iTests
                 try
                 {
                     string text = string.Join("\n", Controls(dialog).OfType<Label>().Select(l => l.Text));
-                    TestRunner.Assert(!text.Contains("\u4e0a\u3052\u5f85\u3061\u304c 0 \u4ef6"));
-                    TestRunner.Assert(text.Contains(unknown ? "\u4ef6\u6570\u306f\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093" : "\u4e0a\u3052\u5f85\u3061\u304c 1 \u4ef6"));
+                    TestRunner.Assert(!text.Contains("\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u5f85\u3061\u304c 0 \u4ef6"));
+                    TestRunner.Assert(text.Contains(unknown ? "\u4ef6\u6570\u306f\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093" : "\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u5f85\u3061\u304c 1 \u4ef6"));
                     TestRunner.Assert(text.Contains(unknown ? "upload state is unknown" : "uploadsQueued=1, uploadsInProgress=0"));
                 }
                 catch (Exception e) { failure = e; }

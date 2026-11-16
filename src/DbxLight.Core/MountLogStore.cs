@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace DbxLight.Core;
 
-public sealed record MountLogInfo(bool Captured = false, bool Recording = false, string Reason = "\u8a18\u9332\u3092\u53d6\u3063\u3066\u3044\u307e\u305b\u3093\u3002",
+public sealed record MountLogInfo(bool Captured = false, bool Recording = false, string Reason = "\u30ed\u30b0\u3092\u8a18\u9332\u3057\u3066\u3044\u307e\u305b\u3093\u3002",
     string? Directory = null, long Bytes = 0, DateTimeOffset? StartedUtc = null);
 
 /// <summary>rclone owns log writing and rotation. The application only prepares and reads.</summary>
@@ -45,12 +45,12 @@ internal static class MountLogStore
             }
             // Check writability without truncating or adding to an existing log.
             using (new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { }
-            return new(true, true, "INFO \u306e\u8a18\u9332\u3092\u53d6\u3063\u3066\u3044\u307e\u3059\u3002", folder, new FileInfo(path).Length, DateTimeOffset.UtcNow);
+            return new(true, true, "INFO \u306e\u30ed\u30b0\u3092\u8a18\u9332\u3057\u3066\u3044\u307e\u3059\u3002", folder, new FileInfo(path).Length, DateTimeOffset.UtcNow);
         }
         catch
         {
             // Diagnostics must never prevent starting or stopping, including unexpected failures.
-            return new(false, false, "\u8a18\u9332\u3092\u53d6\u308c\u3066\u3044\u307e\u305b\u3093\u3002\u6a29\u9650\u307e\u305f\u306f\u4fdd\u5b58\u5148\u306e\u7a7a\u304d\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+            return new(false, false, "\u30ed\u30b0\u3092\u8a18\u9332\u3067\u304d\u3066\u3044\u307e\u305b\u3093\u3002\u6a29\u9650\u307e\u305f\u306f\u4fdd\u5b58\u5148\u306e\u7a7a\u304d\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
         }
     }
     internal static MountLogInfo Read(RuntimeState state)
@@ -66,9 +66,9 @@ internal static class MountLogStore
             PrivateStateFiles.ValidateExisting(path);
             bool recording = state.StoppedUtc is null && state.StopDisposition == StopDisposition.Running;
             return saved with { Recording = recording, Bytes = new FileInfo(path).Length,
-                Reason = recording ? "INFO \u306e\u8a18\u9332\u3092\u53d6\u3063\u3066\u3044\u307e\u3059\u3002" : "\u3053\u306e\u8d77\u52d5\u306e\u8a18\u9332\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002" };
+                Reason = recording ? "INFO \u306e\u30ed\u30b0\u3092\u8a18\u9332\u3057\u3066\u3044\u307e\u3059\u3002" : "\u3053\u306e\u8d77\u52d5\u306e\u30ed\u30b0\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002" };
         }
-        catch { return saved with { Recording = false, Reason = "\u8a18\u9332\u306f\u3042\u308a\u307e\u3059\u304c\u8aad\u3081\u307e\u305b\u3093\u3002\u5931\u6557\u306e\u6709\u7121\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002" }; }
+        catch { return saved with { Recording = false, Reason = "\u30ed\u30b0\u306f\u3042\u308a\u307e\u3059\u304c\u8aad\u3081\u307e\u305b\u3093\u3002\u5931\u6557\u306e\u6709\u7121\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002" }; }
     }
     internal static void ValidateFolder(string folder)
     {

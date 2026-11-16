@@ -53,7 +53,7 @@ internal sealed class PrivateLoginFile : IDisposable
     internal static void RefuseActiveChange(string? configPath)
     {
         if (configPath is not null && CredentialSwitch.LeaseActive(configPath))
-            throw new InvalidOperationException("\u30ed\u30b0\u30a4\u30f3\u3068\u63a5\u7d9a\u5148\u306e\u7a93\u3092\u9589\u3058\u3066\u304b\u3089\u3001\u5272\u308a\u5f53\u3066\u3092\u59cb\u3081\u3066\u304f\u3060\u3055\u3044\u3002");
+            throw new InvalidOperationException("\u30ed\u30b0\u30a4\u30f3\u3068\u63a5\u7d9a\u5148\u306e\u753b\u9762\u3092\u9589\u3058\u3066\u304b\u3089\u3001\u30de\u30a6\u30f3\u30c8\u3092\u958b\u59cb\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
     }
 
     internal DbxConfig Commit(MountController controller, DbxConfig expected, DbxConfig after) => ControlGate.Execute(() =>

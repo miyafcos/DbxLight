@@ -33,7 +33,7 @@ internal static class Unit3cRecoveryTests
         foreach (var item in new (StopDisposition Kind, string Words)[]
         {
             (StopDisposition.Unknown, "\u524d\u306e\u505c\u6b62\u72b6\u614b\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093"),
-            (StopDisposition.Running, "\u4e0a\u3052\u7d42\u308f\u3063\u305f\u3053\u3068\u3092\u307e\u3060\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093"),
+            (StopDisposition.Running, "\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u304c\u7d42\u308f\u3063\u305f\u3053\u3068\u3092\u307e\u3060\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093"),
             (StopDisposition.Clean, "\u505c\u6b62\u5f8c\u306e\u78ba\u8a8d"),
             (StopDisposition.Forced, "\u5f37\u5236\u3067\u6b62\u3081\u307e\u3057\u305f"),
             (StopDisposition.UnexpectedExit, "\u4e88\u671f\u305b\u305a\u7d42\u4e86\u3057\u307e\u3057\u305f"),
@@ -50,7 +50,7 @@ internal static class Unit3cRecoveryTests
         }
         string dirty = RecoveryDestination.Explain(f.Clean with { RecoveryRequired = true, StopDisposition = StopDisposition.StopUncertain,
             CacheInspection = $"Dirty metadata: 1 pending files in {f.Clean.ActiveConfig.CacheDir}." });
-        TestRunner.Assert(dirty.Contains("\u307e\u3060\u4e0a\u304c\u3063\u3066\u3044\u306a\u3044\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u3057\u305f", StringComparison.Ordinal));
+        TestRunner.Assert(dirty.Contains("\u307e\u3060\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u3055\u308c\u3066\u3044\u306a\u3044\u30d5\u30a1\u30a4\u30eb\u304c\u898b\u3064\u304b\u308a\u307e\u3057\u305f", StringComparison.Ordinal));
     }
 
     private static void CacheResults()

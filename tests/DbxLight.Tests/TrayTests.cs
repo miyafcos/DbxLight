@@ -152,9 +152,9 @@ internal static class TrayTests
         });
         runner.Test("tray stop: waiting and explicit force messages", () =>
         {
-            TestRunner.Equal("上げ待ちが 3 件あります。上げ終わるまで待ちます", TrayPresentation.StopWaiting(3));
+            TestRunner.Equal("アップロード待ちが 3 件あります。アップロードが終わるまで待ちます", TrayPresentation.StopWaiting(3));
             TestRunner.Assert(TrayPresentation.ForceExplanation.StartsWith("同じ設定で起動し直すと、停止中のキャッシュを走査します", StringComparison.Ordinal));
-            TestRunner.Assert(TrayPresentation.ForceExplanation.Contains("危ない物は取り出して残し", StringComparison.Ordinal));
+            TestRunner.Assert(TrayPresentation.ForceExplanation.Contains("問題のあるファイルは退避して残し", StringComparison.Ordinal));
             TestRunner.Assert(TrayPresentation.ForceExplanation.Contains("ドライブの元の場所へ自分で戻してください", StringComparison.Ordinal));
         });
         runner.Test("tray polling: busy five seconds and idle thirty seconds", () =>
@@ -168,7 +168,7 @@ internal static class TrayTests
         {
             var snapshot = new TraySnapshot(new() { Running = true, Ready = true, UploadsQueued = 3 }, [], [], true, null);
             var config = new DbxConfig { Remote = "local:" };
-            TestRunner.Equal("上げ待ち 3 件 (読み取り専用)", TrayPresentation.Tooltip(snapshot, config));
+            TestRunner.Equal("アップロード待ち 3 件 (読み取り専用)", TrayPresentation.Tooltip(snapshot, config));
             TestRunner.Assert(!TrayPresentation.Tooltip(snapshot, config with { WriteAllowedRemotes = ["local:"] }).Contains("読み取り専用"));
             TestRunner.Assert(TrayPresentation.Tooltip(snapshot, config with { WriteAllowedRemotes = ["LOCAL:"] }).Contains("読み取り専用"));
             TestRunner.Assert(TrayPresentation.Tooltip(snapshot with { ActiveConfig = config }, config with { WriteAllowedRemotes = ["local:"] }).Contains("読み取り専用"));

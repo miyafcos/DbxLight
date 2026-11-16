@@ -202,7 +202,7 @@ internal sealed class ResidentContext : ApplicationContext
             if (!ReferenceEquals(preparationCancellation, preparing)) return;
             StartupFailure.Annotate(e, Config, options.ConfigPath);
             startupError = Ui.Failure(e);
-            Notify("割り当てを開始できません", startupError, ToolTipIcon.Error);
+            Notify("マウントを開始できません", startupError, ToolTipIcon.Error);
             Snapshot = new(new(), [], [], false, startupError);
             if (started is not null) throw;
         }
@@ -251,7 +251,7 @@ internal sealed class ResidentContext : ApplicationContext
             int result = await task;
             SupervisorEnded(task);
             if (ReferenceEquals(supervisor, task) && result != 0 && Phase != ResidentPhase.Exiting)
-                Notify("割り当てを起動し直せません", "自動で起動し直せませんでした。設定と記録を確認して、メニューの「再開」を押してください。", ToolTipIcon.Error);
+                Notify("マウントを起動し直せません", "自動で起動し直せませんでした。設定とログを確認して、メニューの「再開」を押してください。", ToolTipIcon.Error);
         }
         catch (Exception e)
         {
@@ -271,7 +271,7 @@ internal sealed class ResidentContext : ApplicationContext
             catch (Exception logError) when (logError is IOException or UnauthorizedAccessException)
             { System.Diagnostics.Trace.WriteLine("Supervisor failure log unavailable: " + logError.Message); }
             if (ReferenceEquals(supervisor, task) && Phase != ResidentPhase.Exiting)
-                Notify("割り当てが停止しました", Ui.Failure(e), ToolTipIcon.Error);
+                Notify("マウントが停止しました", Ui.Failure(e), ToolTipIcon.Error);
         }
         if (ReferenceEquals(supervisionCancellation, source)) supervisionCancellation = null;
         source.Dispose();
@@ -312,29 +312,29 @@ internal sealed class ResidentContext : ApplicationContext
             if (Snapshot.QueueKnown && Snapshot.Status.RclonePid is { } pid) ages.Observe(pid, Snapshot.Queue, DateTimeOffset.UtcNow);
             else if (!Snapshot.Status.Running && Phase == ResidentPhase.Stopped) ages.Observe(0, [], DateTimeOffset.UtcNow);
             if (restarts.Observe(Snapshot.RestartCount) && Snapshot.Status.Running)
-                Notify("割り当てが停止したため起動し直しました", "状態を開き、上げ待ちと失敗したファイルを確認してください。", ToolTipIcon.Warning);
+                Notify("マウントが停止したため起動し直しました", "状態画面を開き、アップロード待ちと失敗したファイルを確認してください。", ToolTipIcon.Warning);
             UpdateTray();
             statusForm?.UpdateSnapshot(Snapshot, Oldest, Config);
             poll.Interval = (int)TrayPresentation.PollInterval(Snapshot.Status, Waiting).TotalMilliseconds;
             if (downloadNotices.Observe(Snapshot.Identity, Snapshot.Status.DownloadActivity))
-                Notify("短い間に多くのファイルを取得しています",
-                    "必要なファイルだけ開き、一覧・名前の検索に dbxl ls / find を使ってください。取得は続けます。", ToolTipIcon.Warning, DownloadNoticeTracker.Key(Snapshot.Identity, Snapshot.Status.DownloadActivity!));
+                Notify("短時間に多くのファイルをダウンロードしています",
+                    "必要なファイルだけ開き、一覧・名前の検索に dbxl ls / find を使ってください。ダウンロードは続けます。", ToolTipIcon.Warning, DownloadNoticeTracker.Key(Snapshot.Identity, Snapshot.Status.DownloadActivity!));
             var newRescues = Snapshot.Rescued?.Where(r => r.RecordStatus == "verified" && !r.NotificationShown && !r.Acknowledged).ToArray() ?? [];
             if (newRescues.Length > 0)
             {
-                Notify("未送信を取り出して保全しました",
-                    $"取り出した物が {newRescues.Length} 件あります。状態の窓で理由と保存先を確認し、必要な内容を自分で戻してください。", ToolTipIcon.Warning,
+                Notify("未アップロードのファイルを退避しました",
+                    $"退避したファイルが {newRescues.Length} 件あります。状態画面で理由と保存先を確認し、必要な内容を自分で戻してください。", ToolTipIcon.Warning,
                     "rescue:" + string.Join(',', newRescues.Select(r => r.Id)));
                 await Task.Run(() => Controller.MarkRescueNotified(newRescues.Select(r => r.Id)));
             }
             if (generation != displayGeneration || disposed || Phase == ResidentPhase.Exiting) return;
             bool failed = Snapshot.Status.ErroredFiles > 0 || Snapshot.Queue.Any(q => q.Tries > 0);
             failedObservations = failed ? failedObservations + 1 : 0;
-            if (failedObservations >= 2) Notify("上げの失敗が続いています", "状態を開き、失敗したファイルのパスを確認してください。", ToolTipIcon.Error);
+            if (failedObservations >= 2) Notify("アップロードの失敗が続いています", "状態画面を開き、失敗したファイルのパスを確認してください。", ToolTipIcon.Error);
             if (Oldest?.Elapsed > TimeSpan.FromMinutes(10))
-                Notify("上げ待ちが 10 分を超えています", "接続と失敗したファイルを確認してください。長く残った上げ待ちは、雲の新しい版を上書きすることがあります。", ToolTipIcon.Warning);
+                Notify("アップロード待ちが 10 分を超えています", "接続と失敗したファイルを確認してください。長く残ったアップロード待ちは、Dropbox 上の新しい版を上書きすることがあります。", ToolTipIcon.Warning);
             if (everMounted && Phase == ResidentPhase.Watching && !Snapshot.Status.Running)
-                Notify("割り当てが停止しました", "自動で起動し直しています。戻らない場合は状態と記録を確認してください。", ToolTipIcon.Warning);
+                Notify("マウントが停止しました", "自動で起動し直しています。戻らない場合は状態とログを確認してください。", ToolTipIcon.Warning);
             if (sessionRequested && !sessionStoppedClean && Phase is ResidentPhase.Watching or ResidentPhase.Stopped &&
                 Snapshot.Status.UploadsQueued == 0 && Snapshot.Status.UploadsInProgress == 0)
                 _ = PrepareSessionStopAsync();
@@ -483,7 +483,7 @@ internal sealed class ResidentContext : ApplicationContext
             else if (choice.Choice == StopChoice.Wait)
             {
                 SetPhase(shouldExit ? ResidentPhase.WaitingToExit : ResidentPhase.WaitingToPause);
-                Notify("上げ終わるまで待ちます", count is { } n ? TrayPresentation.StopWaiting(n) : "上げ待ちを確認できるまで停止しません。", ToolTipIcon.Info);
+                Notify("アップロードが終わるまで待ちます", count is { } n ? TrayPresentation.StopWaiting(n) : "アップロード待ちを確認できるまで停止しません。", ToolTipIcon.Info);
                 poll.Interval = 5000;
             }
             else SetPhase(ResidentPhase.Watching);
@@ -522,10 +522,10 @@ internal sealed class ResidentContext : ApplicationContext
     }
     private void ExplainOtherActivity()
     {
-        const string message = "このトレイの見張りは停止済みです。ほかの入口の動作または起動準備の記録が残っています。状態を確認してください。";
+        const string message = "このトレイの監視は停止済みです。別のプロセスによる動作または起動準備の記録が残っています。状態を確認してください。";
         startupError = startupError is null ? message : startupError + "\n" + message;
         Snapshot = Snapshot with { Error = startupError };
-        Notify("このトレイの見張りは停止しました", startupError, ToolTipIcon.Info);
+        Notify("このトレイの監視は停止しました", startupError, ToolTipIcon.Info);
     }
     private async Task StopMountAsync(bool force, ResidentPhase previous, bool ownGenerationOnly = false)
     {
@@ -657,7 +657,7 @@ internal sealed class ResidentContext : ApplicationContext
     {
         try
         {
-            if (!Snapshot.Status.Ready) { Notify("フォルダを開けません", "割り当てが停止しています。メニューの「再開」を押してください。", ToolTipIcon.Warning); return; }
+            if (!Snapshot.Status.Ready) { Notify("フォルダを開けません", "マウントが停止しています。メニューの「再開」を押してください。", ToolTipIcon.Warning); return; }
             Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, ArgumentList = { MountPaths.CanonicalMount(Config.MountPoint) } });
         }
         catch (Exception e) { Notify("フォルダを開けません", e.Message, ToolTipIcon.Warning); }

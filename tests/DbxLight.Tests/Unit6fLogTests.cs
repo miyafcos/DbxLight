@@ -45,7 +45,7 @@ internal static partial class Unit6fTests
         try { f.Start(); }
         finally { MountLogStore.BeforeCreate = null; }
         var status = f.Controller.Status();
-        TestRunner.Assert(status.Ready && !status.LogCapture.Captured && status.LogCapture.Reason.Contains("\u53d6\u308c\u3066\u3044\u307e\u305b\u3093", StringComparison.Ordinal));
+        TestRunner.Assert(status.Ready && !status.LogCapture.Captured && status.LogCapture.Reason.Contains("\u8a18\u9332\u3067\u304d\u3066\u3044\u307e\u305b\u3093", StringComparison.Ordinal));
         f.Controller.Stop();
     }
     private static void UnsafeLogs(string kind)

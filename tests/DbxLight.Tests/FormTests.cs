@@ -69,7 +69,7 @@ internal static class FormTests
             UploadsInProgress = 2, ErroredFiles = 0 }, [], [], true, null, ActiveConfig: config);
         form.UpdateSnapshot(busy, null, config);
         string[] rows = Field<Label>(form, "summary").Text.Split('\n');
-        TestRunner.Assert(rows[0].Contains("\u4e0a\u3052\u3066\u3044\u308b\u9014\u4e2d", StringComparison.Ordinal) && !rows[0].Any(char.IsDigit),
+        TestRunner.Assert(rows[0].Contains("\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u4e2d", StringComparison.Ordinal) && !rows[0].Any(char.IsDigit),
             "Headline repeats a count instead of the overall uploading state: " + rows[0]);
         TestRunner.Assert(rows[1].Contains("3") && rows[1].Contains("2"));
         form.UpdateSnapshot(busy with { Status = busy.Status with { UploadsQueued = 0, UploadsInProgress = 0 }, Errors = ["ERROR other"] }, null, config);

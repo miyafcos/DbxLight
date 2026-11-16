@@ -124,7 +124,7 @@ internal static partial class CredentialSwitch
     internal static void BeginAllowed(string configPath)
     {
         foreach (string key in Registry(configPath).Keys)
-            if (LeaseActive(key)) throw new InvalidOperationException("\u30ed\u30b0\u30a4\u30f3\u306e\u7a93\u3092\u9589\u3058\u3066\u304b\u3089\u3084\u308a\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+            if (LeaseActive(key)) throw new InvalidOperationException("\u30ed\u30b0\u30a4\u30f3\u753b\u9762\u3092\u9589\u3058\u3066\u304b\u3089\u3084\u308a\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
         if (File.Exists(TransactionPath(configPath)) && !File.Exists(ReloginPath(configPath))) throw NeedsLogin();
     }
 

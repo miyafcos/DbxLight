@@ -126,11 +126,11 @@ public static class Program
                     {
                         Console.WriteLine($"running={status.Running} ready={status.Ready} pid={status.RclonePid} queued={status.UploadsQueued} uploading={status.UploadsInProgress} errors={status.ErroredFiles}" + (status.StatusError is null ? "" : " error=" + status.StatusError));
                         if (status.Preparation is { } preparing)
-                            Console.WriteLine($"起動の準備中: {preparing.Stage} {preparing.Completed}/{preparing.Total}; 開始 {preparing.StartedUtc:O}" + (preparing.Stopping ? " 取り出しの区切りで止めます。" : ""));
+                            Console.WriteLine($"起動の準備中: {preparing.Stage} {preparing.Completed}/{preparing.Total}; 開始 {preparing.StartedUtc:O}" + (preparing.Stopping ? " 退避の区切りで止めます。" : ""));
                         if (status.RecoveryRequired && status.Running && !status.ProcessUncertain) Console.WriteLine(ConfirmingMessage);
                         if (status.RescueCountsKnown) PrintRescue(status.RescueNotice);
-                        else Console.WriteLine("取り出しの件数は準備中のため未確認です。");
-                        Console.WriteLine(status.LogCapture.Reason + (status.LogCapture.Directory is null ? "" : " 記録のフォルダ: " + status.LogCapture.Directory));
+                        else Console.WriteLine("退避したファイルの件数は準備中のため未確認です。");
+                        Console.WriteLine(status.LogCapture.Reason + (status.LogCapture.Directory is null ? "" : " ログのフォルダ: " + status.LogCapture.Directory));
                     }
                     return status.Running && !status.Ready ? 1 : 0;
                 case "hide":
@@ -283,7 +283,7 @@ public static class Program
     {
         Console.WriteLine($"{(result.AlreadyRunning ? "Already running" : "Started")} rclone pid={result.Pid}.");
         PrintRescue(result.RescueNotice);
-        Console.WriteLine(result.LogCapture.Reason + (result.LogCapture.Directory is null ? "" : " 記録のフォルダ: " + result.LogCapture.Directory));
+        Console.WriteLine(result.LogCapture.Reason + (result.LogCapture.Directory is null ? "" : " ログのフォルダ: " + result.LogCapture.Directory));
     }
     internal static int RunResident(MountController controller, bool json, CancellationToken token)
     {
@@ -300,7 +300,7 @@ public static class Program
         object finalNotice = notice is not null ? notice : new
         {
             unacknowledged = (int?)null, unknownRecords = (int?)null, foreignRecords = (int?)null,
-            hint = "取り出した物の件数は未確認です。dbxl rescue list --json で確認してください。"
+            hint = "退避したファイルの件数は未確認です。dbxl rescue list --json で確認してください。"
         };
         if (json) WriteJson(new { ok = exit == 0, code = preparationCancelled ? "cancelled" : exit == 0 ? "completed" : "failed",
             message = "Resident run ended.", preparationCancelled, rescueCountsKnown = notice is not null, rescueNotice = finalNotice });
@@ -308,13 +308,13 @@ public static class Program
         {
             if (preparationCancelled) Console.WriteLine("起動の準備を取り消して終了しました。");
             if (notice is not null) PrintRescue(notice);
-            else Console.WriteLine("取り出した物の件数は未確認です。dbxl rescue list --json で確認してください。");
+            else Console.WriteLine("退避したファイルの件数は未確認です。dbxl rescue list --json で確認してください。");
         }
         return exit;
     }
 
     private static void PrintRescue(RescueNotice notice) =>
-        Console.WriteLine($"取り出した物（未確認）={notice.Unacknowledged} 件; 確かめられない記録={notice.UnknownRecords} 件; ほかの設定={notice.ForeignRecords} 件。 " + notice.Hint);
+        Console.WriteLine($"退避したファイル（未確認）={notice.Unacknowledged} 件; 確認できない記録={notice.UnknownRecords} 件; ほかの設定={notice.ForeignRecords} 件。 " + notice.Hint);
     private static void PrintHidden(DbxConfig config)
     {
         foreach (string path in config.HiddenPaths) Console.WriteLine(path);

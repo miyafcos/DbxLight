@@ -32,7 +32,7 @@ internal static class Unit3cQueueTextTests
     {
         string text = Check(Snapshot(0, true), null);
         TestRunner.Assert(!text.Contains(Caveat, StringComparison.Ordinal), "An empty queue still has an earlier-wait caveat.");
-        TestRunner.Assert(text.Contains("\u4e0a\u3052\u5f85\u3061\u306f\u3042\u308a\u307e\u305b\u3093", StringComparison.Ordinal));
+        TestRunner.Assert(text.Contains("\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u5f85\u3061\u306f\u3042\u308a\u307e\u305b\u3093", StringComparison.Ordinal));
     }
 
     private static void Pending()

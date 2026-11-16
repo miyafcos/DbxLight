@@ -65,7 +65,7 @@ public sealed partial class MountController
     public StopResult Stop(bool force = false)
     {
         if (StartupPreparation.Read(State.PathName, Config.PathName) is not null && StartupPreparation.RequestStop(State.PathName, Config.PathName))
-            return new(false, null) { PreparationCancellationRequested = true, Message = "起動の準備中です。取り出しの区切りで止めます。" };
+            return new(false, null) { PreparationCancellationRequested = true, Message = "起動の準備中です。退避の区切りで止めます。" };
         return ControlGate.Execute(() => StopLocked(force));
     }
     private static bool OwnsGeneration(RuntimeState? current, RuntimeState? owned) => current is not null && owned is not null &&
@@ -233,7 +233,7 @@ public sealed partial class MountController
     private void RequireUnchanged(DbxConfig expected)
     {
         if (JsonSerializer.Serialize(Config.Load(), JsonFiles.Options) != JsonSerializer.Serialize(expected, JsonFiles.Options))
-            throw new InvalidOperationException("別の操作で設定が変わりました。この窓を開き直してください。");
+            throw new InvalidOperationException("別の操作で設定が変わりました。この画面を開き直してください。");
     }
 
     private void EnsureConnectionChangeAllowed()
@@ -246,7 +246,7 @@ public sealed partial class MountController
             throw new PendingUploadsException(read.Status.RecoveryLocation ?? read.Status.StatusError ?? "プロセスの状態を確認できません。");
         if (read.Status.Running && (!read.Status.Ready || read.Status.StatusError is not null ||
             read.Status.UploadsQueued != 0 || read.Status.UploadsInProgress != 0))
-            throw new PendingUploadsException("上げ待ちと上げている途中が両方 0 と確認できるまで、接続先と権限は変更できません。");
+            throw new PendingUploadsException("アップロード待ちとアップロード中が両方 0 と確認できるまで、接続先と権限は変更できません。");
         EnsureConnectionStorage(Config.Load(), state, read.Status.Running);
         if (state is { RecoveryRequired: true } && !read.Status.Running)
             SaveRuntime(state with { RecoveryRequired = false, StopDisposition = StopDisposition.Clean });
@@ -484,7 +484,7 @@ public sealed partial class MountController
     private PendingUploadsException PreparationStopped(Exception? persistenceFailure)
     {
         var stopped = new PendingUploadsException(persistenceFailure is null
-            ? "起動の準備を取り出しの区切りで止めました。子は起動していません。次の起動で続けます。"
+            ? "起動の準備を退避の区切りで止めました。子プロセスは起動していません。次の起動で続けます。"
             : "起動の取り消しは受け付けましたが、記録を保存できませんでした。起動し直しは行いません。状態と回復の記録を確認してください。",
             innerException: persistenceFailure);
         stopped.Data["PreparationCancelled"] = true;
@@ -889,7 +889,7 @@ public sealed partial class MountController
             string reason = RecoveryDestination.Explain(state with { RecoveryRequired = true,
                 StopDisposition = StopDisposition.ProcessUnknown, UncertainProcess = e.Identity });
             throw StartupFailure.ForUser(new PendingUploadsException(reason), "cache_owner_unknown", state.ActiveConfig.CacheDir, reason,
-                "元の設定と状態を残し、持ち主の終了と起動印を手動で確認してください。");
+                "元の設定と状態を残し、所有プロセスの終了と起動マークを手動で確認してください。");
         }
     }
 
@@ -934,7 +934,7 @@ public sealed partial class MountController
             RuntimeState pending = MarkRecovery(state, StopDisposition.ProcessUnknown, ProcessUncertainty.From(e, state.RclonePid));
             string reason = RecoveryDestination.Explain(pending);
             throw StartupFailure.ForUser(new PendingUploadsException(reason), "cache_owner_unknown", state.ActiveConfig.CacheDir, reason,
-                "元の設定と状態を残し、持ち主の終了と起動印を手動で確認してください。");
+                "元の設定と状態を残し、所有プロセスの終了と起動マークを手動で確認してください。");
         }
     }
 
@@ -960,16 +960,16 @@ public sealed partial class MountController
         CacheOwner owner;
         try { owner = JsonFiles.Read<CacheOwner>(path); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
-        { throw StartupFailure.ForUser(new PendingUploadsException("キャッシュの持ち主を確認できません。"), "cache_owner_unknown", path,
-            "キャッシュの持ち主の記録を読み取れません。", "元の設定と状態を残し、記録と持ち主の終了を手動で確認してください。"); }
+        { throw StartupFailure.ForUser(new PendingUploadsException("キャッシュの所有プロセスを確認できません。"), "cache_owner_unknown", path,
+            "キャッシュの所有プロセスの記録を読み取れません。", "元の設定と状態を残し、記録と所有プロセスの終了を手動で確認してください。"); }
         bool legacy = owner.IdentityVersion == 0;
         if (owner.IdentityVersion is not (0 or 1) || !Path.IsPathFullyQualified(owner.StatePath) ||
             legacy && (owner.LaunchPending || !ProcessIdentity.CompleteRecord(owner.Pid, owner.ProcessStartedUtc, owner.ExecutablePath)))
-            throw StartupFailure.ForUser(new PendingUploadsException("古いキャッシュの持ち主の同一性を確認できません。"), "cache_owner_unknown", path, "古いキャッシュの持ち主の同一性を確認できません。", "元の設定と状態を残し、持ち主の終了と起動印を手動で確認してください。");
+            throw StartupFailure.ForUser(new PendingUploadsException("古いキャッシュの所有プロセスの同一性を確認できません。"), "cache_owner_unknown", path, "古いキャッシュの所有プロセスの同一性を確認できません。", "元の設定と状態を残し、所有プロセスの終了と起動マークを手動で確認してください。");
         if (owner.LaunchPending && (owner.IdentityVersion != 1 ||
             !ProcessIdentity.CompleteRecord(owner.LaunchParentPid, owner.LaunchParentStartedUtc, owner.LaunchParentExecutablePath) ||
             (owner.Pid <= 0 ? owner.LaunchPhase != StartupPhase.Intent : owner.LaunchPhase is not (StartupPhase.RecordedSuspended or StartupPhase.Resumed))))
-            throw StartupFailure.ForUser(new PendingUploadsException("キャッシュの古い起動印を確認できません。手動の回復確認が必要です。"), "cache_owner_unknown", path, "キャッシュの古い起動印を確認できません。手動の回復確認が必要です。", "元の設定と状態を残し、持ち主の終了と起動印を手動で確認してください。");
+            throw StartupFailure.ForUser(new PendingUploadsException("キャッシュの古い起動マークを確認できません。手動の回復確認が必要です。"), "cache_owner_unknown", path, "キャッシュの古い起動マークを確認できません。手動の回復確認が必要です。", "元の設定と状態を残し、所有プロセスの終了と起動マークを手動で確認してください。");
         if (owner.LaunchPending && owner.IdentityVersion == 1)
         {
             var marker = new RuntimeState { IdentityVersion = owner.IdentityVersion, RclonePid = owner.Pid,
@@ -980,7 +980,7 @@ public sealed partial class MountController
             if (owner.Pid > 0)
             {
                 if (!ProcessIdentity.CompleteRecord(owner.Pid, owner.ProcessStartedUtc, owner.ExecutablePath))
-                    throw StartupFailure.ForUser(new PendingUploadsException("キャッシュの起動印の子の同一性を確認できません。"), "cache_owner_unknown", path, "キャッシュの起動印の子の同一性を確認できません。", "元の設定と状態を残し、持ち主の終了と起動印を手動で確認してください。");
+                    throw StartupFailure.ForUser(new PendingUploadsException("キャッシュの起動マークの子プロセスの同一性を確認できません。"), "cache_owner_unknown", path, "キャッシュの起動マークの子プロセスの同一性を確認できません。", "元の設定と状態を残し、所有プロセスの終了と起動マークを手動で確認してください。");
                 using var child = ExplainOtherOwner(state, () => ProcessIdentity.Open(marker));
                 stopped = child is null;
                 if (child is not null && owner.LaunchPhase == StartupPhase.RecordedSuspended && ThreadsSuspended(child) == true && ParentStopped(marker))
@@ -997,11 +997,11 @@ public sealed partial class MountController
             }
         }
         if (owner.Pid <= 0 && owner.LaunchPending)
-            throw StartupFailure.ForUser(new PendingUploadsException("Cache launch ownership is unresolved; retain recovery state."), "cache_owner_unknown", path, "Cache launch ownership is unresolved; retain recovery state.", "元の設定と状態を残し、持ち主の終了と起動印を手動で確認してください。");
+            throw StartupFailure.ForUser(new PendingUploadsException("Cache launch ownership is unresolved; retain recovery state."), "cache_owner_unknown", path, "Cache launch ownership is unresolved; retain recovery state.", "元の設定と状態を残し、所有プロセスの終了と起動マークを手動で確認してください。");
         using var process = ExplainOtherOwner(state, () => ProcessIdentity.Open(owner.Pid, owner.ProcessStartedUtc,
             owner.ExecutablePath, ProcessIdentityQueries.System, trustedRecord: owner.IdentityVersion == 1));
         if (process is not null) throw StartupFailure.ForUser(new InvalidOperationException("Cache owner is still running."), "cache_owner_running", config.CacheDir,
-            "キャッシュの持ち主の rclone がまだ動いているため使えません。", "その持ち主の設定から通常の停止を行い、終了を確認してください。");
+            "キャッシュの所有プロセスの rclone がまだ動いているため使えません。", "その所有プロセスの設定から通常の停止を行い、終了を確認してください。");
         // Only confirmed death (including PID reuse with a different start time)
         // permits upgrading an unversioned owner. Matching live legacy owners refuse above.
         if (legacy) JsonFiles.Write(path, owner with { IdentityVersion = 1, Pid = 0,
@@ -1030,14 +1030,14 @@ public sealed partial class MountController
     {
         CacheInspection scan = PendingCacheInspector.InspectStopped(config.CacheDir, () => preparation?.CheckCancellation());
         if (!scan.CompleteScan) throw StartupFailure.ForUser(new PendingUploadsException(scan.Detail), "cache_scan_incomplete", config.CacheDir,
-            "キャッシュを最後まで走査できないため起動しません。", "元の設定・状態とキャッシュを残し、場所と読取り権限を確認してください。");
+            "キャッシュを最後まで走査できないため起動しません。", "元の設定・状態とキャッシュを残し、場所と読み取り権限を確認してください。");
         if (scan.Clean) return;
         bool known = before is not null && before.ConfigPath.Length > 0 &&
             RecoveryDestination.Resolved(before.ActiveConfig) && (before.RclonePid > 0 ||
                 before.StopDisposition == StopDisposition.ClearedByUser ||
                 before.LaunchRecoveryProof == "launch_parent_exited_before_pid" && ParentStopped(before));
         if (!known)
-            throw StartupFailure.ForUser(new PendingUploadsException("\u72b6\u614b\u3068\u56de\u5fa9\u306e\u8a18\u9332\u304c\u7121\u3044\u30ad\u30e3\u30c3\u30b7\u30e5\u306b\u3001\u672a\u9001\u4fe1\u307e\u305f\u306f\u4e0d\u660e\u306e\u7269\u304c\u3042\u308a\u307e\u3059\u3002\u521d\u3081\u3066\u306e\u5229\u7528\u3068\u3057\u3066\u306f\u8d77\u52d5\u3057\u307e\u305b\u3093\u3002\u5143\u306e\u8a2d\u5b9a\u3068\u72b6\u614b\u3092\u5fa9\u5143\u3057\u3066\u304f\u3060\u3055\u3044\u3002"), "cache_provenance_unknown", config.CacheDir, "\u72b6\u614b\u3068\u56de\u5fa9\u306e\u8a18\u9332\u304c\u7121\u3044\u30ad\u30e3\u30c3\u30b7\u30e5\u306b\u3001\u672a\u9001\u4fe1\u307e\u305f\u306f\u4e0d\u660e\u306e\u7269\u304c\u3042\u308a\u307e\u3059\u3002\u521d\u3081\u3066\u306e\u5229\u7528\u3068\u3057\u3066\u306f\u8d77\u52d5\u3057\u307e\u305b\u3093\u3002\u5143\u306e\u8a2d\u5b9a\u3068\u72b6\u614b\u3092\u5fa9\u5143\u3057\u3066\u304f\u3060\u3055\u3044\u3002", "元の設定と状態を復元し、残ったキャッシュをそのまま保持してください。");
+            throw StartupFailure.ForUser(new PendingUploadsException("\u72b6\u614b\u3068\u56de\u5fa9\u306e\u8a18\u9332\u304c\u7121\u3044\u30ad\u30e3\u30c3\u30b7\u30e5\u306b\u3001\u672a\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u307e\u305f\u306f\u4e0d\u660e\u306a\u30d5\u30a1\u30a4\u30eb\u304c\u3042\u308a\u307e\u3059\u3002\u521d\u3081\u3066\u306e\u5229\u7528\u3068\u3057\u3066\u306f\u8d77\u52d5\u3057\u307e\u305b\u3093\u3002\u5143\u306e\u8a2d\u5b9a\u3068\u72b6\u614b\u3092\u5fa9\u5143\u3057\u3066\u304f\u3060\u3055\u3044\u3002"), "cache_provenance_unknown", config.CacheDir, "\u72b6\u614b\u3068\u56de\u5fa9\u306e\u8a18\u9332\u304c\u7121\u3044\u30ad\u30e3\u30c3\u30b7\u30e5\u306b\u3001\u672a\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u307e\u305f\u306f\u4e0d\u660e\u306a\u30d5\u30a1\u30a4\u30eb\u304c\u3042\u308a\u307e\u3059\u3002\u521d\u3081\u3066\u306e\u5229\u7528\u3068\u3057\u3066\u306f\u8d77\u52d5\u3057\u307e\u305b\u3093\u3002\u5143\u306e\u8a2d\u5b9a\u3068\u72b6\u614b\u3092\u5fa9\u5143\u3057\u3066\u304f\u3060\u3055\u3044\u3002", "元の設定と状態を復元し、残ったキャッシュをそのまま保持してください。");
         if (before!.StopDisposition != StopDisposition.ClearedByUser || before.RecoveryRequired)
             EnsureRecoveryDestination(before with { RecoveryRequired = true }, config);
     }
@@ -1049,7 +1049,7 @@ public sealed partial class MountController
     internal static void RequireRescueDirectoryChange(DbxConfig before, DbxConfig after)
     {
         if (!RescuePaths.Same(before.RescueDir, after.RescueDir) && RescueStore.HasUnacknowledged(before))
-            throw new PendingUploadsException("確認済みでない取り出し記録があります。先に元の保存先で内容を確認し、確認済みにしてから rescueDir を変更してください。");
+            throw new PendingUploadsException("確認済みでない退避記録があります。先に元の保存先で内容を確認し、確認済みにしてから rescueDir を変更してください。");
     }
 
     private IReadOnlyList<RescueRecord> PrepareCache(DbxConfig config, RuntimeState? before)
@@ -1057,7 +1057,7 @@ public sealed partial class MountController
         preparation?.Update("キャッシュの走査");
         CacheInspection scan = PendingCacheInspector.InspectStopped(config.CacheDir, () => preparation?.CheckCancellation());
         if (!scan.CompleteScan) throw StartupFailure.ForUser(new PendingUploadsException(scan.Detail), "cache_scan_incomplete", config.CacheDir,
-            "キャッシュを最後まで走査できないため起動しません。", "元の設定・状態とキャッシュを残し、場所と読取り権限を確認してください。");
+            "キャッシュを最後まで走査できないため起動しません。", "元の設定・状態とキャッシュを残し、場所と読み取り権限を確認してください。");
         var records = RescueStore.Pending(config, before?.RescueRecords);
         foreach (var record in records.Where(r => r.RecordStatus == "verified" && !r.MoveCompleted))
         {
@@ -1065,10 +1065,10 @@ public sealed partial class MountController
             _ = RescueStore.ReconcileMoved(record);
         }
         int completed = 0;
-        preparation?.Update("取り出し", completed, scan.Entries.Count);
+        preparation?.Update("退避", completed, scan.Entries.Count);
         foreach (var entry in scan.Entries)
         {
-            preparation?.Update("取り出し", completed++, scan.Entries.Count);
+            preparation?.Update("退避", completed++, scan.Entries.Count);
             // A record is only a resumable plan for an item still found in this cache.
             // Corrupt/foreign/completed records never control startup.
             RescueRecord? plan = records.FirstOrDefault(r => r.RecordStatus == "verified" && !r.MoveCompleted &&
@@ -1076,9 +1076,9 @@ public sealed partial class MountController
             if (plan is not null) { RescueStore.FinishMove(plan); continue; }
             if (!entry.MetadataValid || entry.Dirty == true && !entry.CompleteData)
                 RescueStore.Rescue(config, entry, RescueStore.CloudPath(before, entry),
-                    RecoveryCacheNames.PreservationReason(entry.Relative) ?? entry.Problem ?? "本体が途中までのため取り出しました。");
+                    RecoveryCacheNames.PreservationReason(entry.Relative) ?? entry.Problem ?? "ファイル本体が途中までのため退避しました。");
         }
-        preparation?.Update("取り出し", scan.Entries.Count, scan.Entries.Count);
+        preparation?.Update("退避", scan.Entries.Count, scan.Entries.Count);
         return RescueStore.Pending(config, before?.RescueRecords);
     }
 

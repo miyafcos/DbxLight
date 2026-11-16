@@ -57,7 +57,7 @@ internal static partial class Unit6eTests
         TestRunner.Equal("original saved.txt", File.ReadAllText(Path.Combine(f.RemoteRoot, "saved.txt")));
         TestRunner.Equal(1, Directory.GetFiles(f.RemoteRoot).Length);
         TestRunner.Equal(0, f.State.Load()!.RecoveryComparedFiles);
-        TestRunner.Assert(record.Reason.Contains("自動では上げない", StringComparison.Ordinal));
+        TestRunner.Assert(record.Reason.Contains("自動ではアップロードしません", StringComparison.Ordinal));
         TestRunner.Equal(TimeSpan.FromSeconds(30), MountController.RecoveryFreshnessLimit);
     }
 

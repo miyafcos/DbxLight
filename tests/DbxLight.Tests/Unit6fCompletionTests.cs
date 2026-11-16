@@ -47,8 +47,8 @@ internal static partial class Unit6fTests
         PrivateJsonFile.Write(record.RecordPath, record with { MoveCompleted = false });
         File.Move(record.DestinationPath, record.DestinationPath + ".retained");
         var unknown = f.Controller.RescueList().Single();
-        TestRunner.Assert(unknown.RecordStatus == "unknown" && unknown.RecordProblem!.Contains("本体", StringComparison.Ordinal) &&
-            unknown.RecordProblem.Contains("元にも取り出し先にもありません", StringComparison.Ordinal));
+        TestRunner.Assert(unknown.RecordStatus == "unknown" && unknown.RecordProblem!.Contains("ファイル本体", StringComparison.Ordinal) &&
+            unknown.RecordProblem.Contains("元にも退避先にもありません", StringComparison.Ordinal));
         TestRunner.Assert(File.Exists(record.DestinationPath + ".retained"));
     }
 }

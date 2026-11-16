@@ -47,7 +47,7 @@ internal sealed class StartupPreparation : IDisposable
         path = statePath; this.cancellation = cancellation;
         using var self = Process.GetCurrentProcess();
         state = new(Guid.NewGuid().ToString("N"), configPath, self.Id, self.StartTime.ToUniversalTime(), ProcessIdentity.ImagePath(self), true,
-            new("持ち主の確認", 0, 0, DateTimeOffset.UtcNow));
+            new("所有プロセスの確認", 0, 0, DateTimeOffset.UtcNow));
         Budget = new(time, folders, elapsedOverride);
         Save();
     }

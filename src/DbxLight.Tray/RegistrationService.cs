@@ -22,7 +22,7 @@ public static class ShellPaths
     public static string ToRelativeAbsolute(string path, string mount, bool allowRoot = false)
     {
         if (!Path.IsPathFullyQualified(path) || path.StartsWith("//", StringComparison.Ordinal))
-            throw new ArgumentException("\u5272\u308a\u5f53\u3066\u5148\u306e\u4e2d\u306e\u5b8c\u5168\u4fee\u98fe\u306e\u7d76\u5bfe\u30d1\u30b9\u3092\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
+            throw new ArgumentException("\u30de\u30a6\u30f3\u30c8\u5148\u306e\u4e2d\u306e\u5b8c\u5168\u4fee\u98fe\u306e\u7d76\u5bfe\u30d1\u30b9\u3092\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
         return MountPaths.ToRelative(path, mount, allowRoot);
     }
     public static string DecodeShellPath(string encoded)
@@ -87,7 +87,7 @@ public sealed class RegistrationService
         string current = MountPaths.CanonicalMount(config.MountPoint);
         if (registered.Count == 0 || registered.All(old => old.TrimEnd('\\').Equals(current.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))) return "";
         return "\u53f3\u30af\u30ea\u30c3\u30af\u306e\u767b\u9332\u5148: " + string.Join(", ", registered) + "\u3001\u73fe\u5728: " + current + "\u3002\u767b\u9332\u3057\u76f4\u3059\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002\n" +
-            "\u5272\u308a\u5f53\u3066\u5148\u3092\u78ba\u8a8d\u3057\u3066\u304b\u3089\u6b21\u306e\u30b3\u30de\u30f3\u30c9\u3067\u767b\u9332\u3057\u76f4\u3057\u3001\u3053\u306e\u753b\u9762\u3092\u958b\u304d\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002\n" + Command(executable, options) + " --register";
+            "\u30de\u30a6\u30f3\u30c8\u5148\u3092\u78ba\u8a8d\u3057\u3066\u304b\u3089\u6b21\u306e\u30b3\u30de\u30f3\u30c9\u3067\u767b\u9332\u3057\u76f4\u3057\u3001\u3053\u306e\u753b\u9762\u3092\u958b\u304d\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002\n" + Command(executable, options) + " --register";
     }
     public bool IsAutoStart()
     {
