@@ -16,11 +16,13 @@ public sealed record AgentEntry(string Name, string Path, string Type, long? Siz
     bool? Cached, bool Hidden);
 public sealed record AgentContinuation(int? Offset, string Hint)
 {
-    public static AgentContinuation ForOffset(int offset, bool timeLimited = false)
+    public static AgentContinuation ForOffset(int offset, bool timeLimited = false, bool noProgress = false)
     {
         string prefix = timeLimited ? "Time limit reached; there is more to search, even when entries is empty. " : "";
         return offset <= 1000000
-            ? new(offset, prefix + "Repeat the same command and options with --offset " + offset + "; listing must remain stable.")
+            ? new(offset, prefix + (timeLimited && noProgress
+                ? "Increase --time-limit or narrow the scope with --in, then continue with --offset "
+                : "Repeat the same command and options with --offset ") + offset + "; listing must remain stable.")
             : new(null, prefix + "Offset pagination limit reached. Continue within narrower child folders using the path or --in option.");
     }
 }
@@ -127,7 +129,7 @@ public sealed partial class AgentMetadata : IDisposable
             entries.Add(entry);
         }
         return new(true, listingSource, entries, budget.TimeLimited,
-            budget.TimeLimited ? AgentContinuation.ForOffset(Math.Max(options.Offset, visited), timeLimited: true) : null,
+            budget.TimeLimited ? AgentContinuation.ForOffset(Math.Max(options.Offset, visited), timeLimited: true, noProgress: entries.Count == 0 && visited <= options.Offset) : null,
             depth, depthLimited, Status, SkippedUnsafe, budget.TimeLimited);
     }
 

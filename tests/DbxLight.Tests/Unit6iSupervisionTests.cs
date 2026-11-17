@@ -43,7 +43,23 @@ internal static partial class Unit6iTests
                             ? c.Phase == ResidentPhase.Exiting && !FormTests.Field<System.Windows.Forms.Timer>(c, "poll").Enabled
                             : c.Phase == ResidentPhase.Stopped, "External stop left an unobserved wait.");
                     }
-                    else await c.RefreshAsync();
+                    else
+                    {
+                        // RefreshAsync coalesces an existing read. Await that actual read,
+                        // then require one completed, current observation of the drained queue.
+                        for (int observations = 0; ; observations++)
+                        {
+                            var active = FormTests.Field<TaskCompletionSource?>(c, "refreshCompletion");
+                            TestTimeline.Mark(f.Root, "refusal-refresh-before", new { observations, inFlight = active is not null, phase = c.Phase.ToString() });
+                            if (active is not null) await active.Task; else await c.RefreshAsync();
+                            TestTimeline.Mark(f.Root, "refusal-refresh-after", new { observations, phase = c.Phase.ToString(), c.Snapshot.Confirming, c.Snapshot.QueueKnown,
+                                c.Snapshot.Status.UploadsQueued, c.Snapshot.Status.UploadsInProgress });
+                            if (c.Phase == (exit ? ResidentPhase.Exiting : ResidentPhase.Stopped)) break;
+                            if (!c.Snapshot.Confirming && c.Snapshot.QueueKnown && c.Snapshot.Status.UploadsQueued == 0 && c.Snapshot.Status.UploadsInProgress == 0) break;
+                            TestRunner.Assert(observations < 8, "No current drained-queue observation was completed.");
+                            await Task.Yield();
+                        }
+                    }
                     TestRunner.Equal(exit ? ResidentPhase.Exiting : ResidentPhase.Stopped, c.Phase);
                     TestRunner.Assert(!c.Controller.Status().Running);
                     TestRunner.Equal("pending startup content", File.ReadAllText(Path.Combine(f.RemoteRoot, "pending.txt")));

@@ -39,6 +39,7 @@ internal sealed record RecoveryFolder(bool Blocked, IReadOnlyDictionary<string, 
 internal sealed class RecoveryRemoteProbe(DbxConfig config, RecoveryBudget? budget = null,
     Action? checkCancellation = null, Action<string, string>? nameCheckpoint = null)
 {
+    internal static AsyncLocal<Func<IReadOnlyList<string>, string>?> RunTestReader { get; } = new();
     private readonly Dictionary<string, RecoveryFolder> folders = new(StringComparer.Ordinal);
     private void Check()
     {
@@ -227,6 +228,12 @@ internal sealed class RecoveryRemoteProbe(DbxConfig config, RecoveryBudget? budg
     private string RunCore(IEnumerable<string> arguments)
     {
         Check();
+        if (RunTestReader.Value is { } read)
+        {
+            string response = read(arguments.ToArray());
+            Check();
+            return response;
+        }
         var args = arguments.Concat(new[] { "--ask-password=false", "--ftp-ask-password=false", "--sftp-ask-password=false",
             "--contimeout", "5s", "--timeout", "10s", "--retries", "1", "--low-level-retries", "1" }).ToList();
         if (config.RcloneConfigPath is not null) { args.Add("--config"); args.Add(config.RcloneConfigPath); }

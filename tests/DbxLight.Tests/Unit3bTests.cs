@@ -74,7 +74,7 @@ internal static class Unit3bTests
         TestRunner.Throws<ArgumentException>(() => new DbxConfig { RcloneConfigPath = "relative.conf" }.Validate());
         TestRunner.Throws<ArgumentException>(() => new DbxConfig { Remote = "relative-remote" }.Validate(forMount: true));
         TestRunner.Throws<ArgumentException>(() => new DbxConfig { Remote = @"D:relative" }.Validate(forMount: true));
-        _ = new DbxConfig { Remote = "sample:", CacheDir = @"D:\dbxl-test\absolute-cache", RcloneConfigPath = @"D:\dbxl-test\absolute.conf" }.Validate(forMount: true);
+        _ = new DbxConfig { Remote = "sample:", CacheDir = Path.Combine(TestPaths.WorkRoot, @"absolute-cache"), RcloneConfigPath = Path.Combine(TestPaths.WorkRoot, @"absolute.conf") }.Validate(forMount: true);
         using var f = new Unit3aTests.RcFixture();
         RuntimeState before = f.State.Load()!;
         string relative = Path.GetRelativePath(Environment.CurrentDirectory, before.ActiveConfig.CacheDir);
@@ -533,7 +533,7 @@ internal static class Unit3bTests
         private readonly Dictionary<int, RuntimeState> owned = [];
         public LocalMount(string label, string writeBack = "4s")
         {
-            Root = Path.Combine(@"D:\dbxl-test", "run-u3b-" + label + "-" + Guid.NewGuid().ToString("N"));
+            Root = Path.Combine(TestPaths.WorkRoot, "run-u3b-" + label + "-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
             string remote = Path.Combine(Root, "remote"); Directory.CreateDirectory(remote);
             string empty = Path.Combine(Root, "empty.conf"); File.WriteAllText(empty, "", new UTF8Encoding(false));

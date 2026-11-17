@@ -23,7 +23,7 @@ public sealed partial class AgentMetadata
         int position = 0, scanned = 0;
         bool depthLimited = false;
         AgentFindResult Result(bool truncated, int next = 0, bool timeLimited = false) => new(true, query, Source, entries, truncated,
-            truncated ? AgentContinuation.ForOffset(next, timeLimited) : null,
+            truncated ? AgentContinuation.ForOffset(next, timeLimited, noProgress: entries.Count == 0 && next == offset) : null,
             depth, depthLimited, Status, SkippedUnsafe, timeLimited);
         var budget = new AgentTraversalBudget(timeLimitSeconds);
         foreach (AgentEntry entry in Walk(relative, depth, includeHidden: false, budget))

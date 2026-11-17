@@ -51,7 +51,7 @@ internal static class EndToEnd
 
         public TestContext()
         {
-            root = Path.Combine("D:\\dbxl-test", "run-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + "-" + Guid.NewGuid().ToString("N")[..6]);
+            root = Path.Combine(TestPaths.WorkRoot, "run-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + "-" + Guid.NewGuid().ToString("N")[..6]);
             Directory.CreateDirectory(root);
             remote = Path.Combine(root, "remote");
             foreach (string folder in new[] { "alpha", "alpha/child", "beta", "\u898b\u672c\u30d5\u30a9\u30eb\u30c0" }) Directory.CreateDirectory(Path.Combine(remote, folder));
@@ -82,6 +82,9 @@ internal static class EndToEnd
         {
             MustCli("start");
             RuntimeState live = Track();
+            var drive = new DriveInfo(baseline.MountPoint);
+            Console.WriteLine($"R8 E2E mount path={baseline.MountPoint}; DriveType={drive.DriveType}; DriveFormat={drive.DriveFormat}");
+            TestRunner.Assert(!TestWorkPaths.IsLocalFixedPath(mountRoot, out string workRootReason), workRootReason);
             string actual = string.Join('|', Directory.GetFileSystemEntries(mountRoot).Select(Path.GetFileName).OrderBy(p => p, StringComparer.Ordinal));
             string expected = string.Join('|', Directory.GetFileSystemEntries(remote).Select(Path.GetFileName).OrderBy(p => p, StringComparer.Ordinal));
             TestRunner.Equal(expected, actual);
@@ -232,7 +235,9 @@ internal static class EndToEnd
             var evidence = new { ReadCacheEvicted = true, PendingCachePreserved = true, PendingObservedSeconds = pendingObservedSeconds, PendingObservationSamples = samples, MaxAgeSeconds = 2, PollSeconds = 1, WriteBackSeconds = 25, UploadedContentMatches = ReadRemote(name) == payload };
             JsonFiles.Write(Path.Combine(root, "e7-result.json"), evidence);
             Console.WriteLine($"E7 pending cache survived {samples} observations across 9s (> 2s retention); uploaded content matches; uploaded cache later evicted.");
-            MustCli("stop");
+            var stopTimer = Stopwatch.StartNew();
+            try { MustCli("stop"); }
+            finally { Console.WriteLine($"E7 final normal stop elapsed={stopTimer.Elapsed.TotalSeconds:F3}s."); }
         }
 
         public void RestartLimit()
@@ -416,7 +421,9 @@ internal static class EndToEnd
         }
         private ProcessStartInfo CliInfo(IEnumerable<string> words)
         {
-            var info = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            // dbxl writes UTF-8; read it as UTF-8 instead of relying on the test process's console code page.
+            var info = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+                StandardOutputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
             foreach (string word in new[] { Path.Combine(AppContext.BaseDirectory, "dbxl.dll"), "--config", config.PathName, "--state", state.PathName }.Concat(words)) info.ArgumentList.Add(word);
             info.Environment.Remove("DBXL_CONFIG");
             info.Environment.Remove("DBXL_STATE");

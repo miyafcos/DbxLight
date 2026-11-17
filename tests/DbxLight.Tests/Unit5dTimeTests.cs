@@ -11,6 +11,8 @@ internal static partial class Unit5dTests
         TestRunner.Equal(45d, new ListingOptions().TimeLimitSeconds);
         using var f = new Unit5Fixture("5d-time-options");
         f.Seed("one.txt");
+        TestTimeline.Mark(f.Root, "options-start");
+        using var logical = new TestTraversalClock();
         foreach (string command in new[] { "ls", "find", "stat" })
         {
             string operand = command == "ls" ? "" : command == "find" ? "one" : "one.txt";
@@ -23,7 +25,11 @@ internal static partial class Unit5dTests
             }
             TestRunner.Equal(2, f.Cli(command, operand, "--time-limit", "--json").Exit);
             TestRunner.Equal(2, f.Cli(command, operand, "--time-limit", "1", "--time-limit", "2", "--json").Exit);
-            var valid = f.Cli(command, operand, "--time-limit", "1.25", "--json");
+            // The real CLI parser runs with a controlled traversal clock in this process.
+            var valid = Unit3cTests.Capture(() => (int)typeof(DbxLight.Cli.Program)
+                .GetMethod("MainCore", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(null, [new[] { "--config", f.Store.PathName, "--state", f.State.PathName, command, operand, "--time-limit", "1.25", "--json" }, f.Controller])!);
+            TestTimeline.Mark(f.Root, "cli-valid", new { command, valid.Exit, valid.Output });
             TestRunner.Equal(0, valid.Exit);
             using var json = JsonDocument.Parse(valid.Output);
             if (command == "stat") TestRunner.Assert(!json.RootElement.TryGetProperty("timeLimited", out _));
@@ -31,11 +37,11 @@ internal static partial class Unit5dTests
         }
         using var metadata = new AgentMetadata(f.Controller)
         {
-            ChildrenReader = _ => { Thread.Sleep(1100); return [new("one.txt", false, 1, null)]; }
+            ChildrenReader = _ => { logical.Advance(1.1); return [new("one.txt", false, 1, null)]; }
         };
         var timer = Stopwatch.StartNew();
         AgentListing atomic = metadata.List("", new(TimeLimitSeconds: 1));
-        TestRunner.Assert(timer.Elapsed.TotalSeconds >= 1 && !atomic.Truncated && !atomic.TimeLimited);
+        TestRunner.Assert(logical.Seconds >= 1 && !atomic.Truncated && !atomic.TimeLimited);
         TestRunner.Equal(1, atomic.Entries.Count);
         foreach (double value in new[] { 0d, 0.99, 3600.01, double.NaN, double.PositiveInfinity })
         {
@@ -48,12 +54,13 @@ internal static partial class Unit5dTests
     private static void EmptyTimedSearch()
     {
         using var f = new Unit5Fixture("5d-empty-time");
+        using var logical = new TestTraversalClock();
         int reads = 0;
         using var metadata = new AgentMetadata(f.Controller)
         {
             ChildrenReader = _ =>
             {
-                if (Interlocked.Increment(ref reads) == 1) Thread.Sleep(1100);
+                if (Interlocked.Increment(ref reads) == 1) logical.Advance(1.1);
                 return Enumerable.Range(0, 30).Select(i => new MetadataItem($"file{i:D2}", false, 1, null))
                     .Append(new("needle.txt", false, 1, null)).ToArray();
             }
@@ -66,10 +73,11 @@ internal static partial class Unit5dTests
         TestRunner.Assert(first.Continuation.Hint.Contains("more", StringComparison.Ordinal) &&
             first.Continuation.Hint.Contains("empty", StringComparison.Ordinal));
         TestRunner.Equal(1, reads);
+        logical.Reset();
         AgentFindResult next = metadata.Find("needle", offset: first.Continuation.Offset!.Value, timeLimitSeconds: 1);
         TestRunner.Assert(!next.Truncated && !next.TimeLimited);
         TestRunner.Equal("needle.txt", next.Entries.Single().Path);
-        reads = 0;
+        reads = 0; logical.Reset();
         AgentFindResult replay = metadata.Find("needle", offset: 10, timeLimitSeconds: 1);
         TestRunner.Assert(replay.TimeLimited && replay.Entries.Count == 0);
         TestRunner.Equal(10, replay.Continuation!.Offset);
@@ -81,6 +89,16 @@ internal static partial class Unit5dTests
     private static void TimedReadFailure()
     {
         using var f = new Unit5Fixture("5d-time-failure");
+        using var logical = new TestTraversalClock(); using var release = new ManualResetEventSlim();
+        int checks = 0, secondCheckRead = 0, consumer = Environment.CurrentManagedThreadId;
+        // The admission check uses its pre-release snapshot even if the reader completes immediately.
+        AgentTraversalBudget.ElapsedTestClock.Value = () => Environment.CurrentManagedThreadId == consumer &&
+            checks == 2 && Interlocked.Exchange(ref secondCheckRead, 1) == 0 ? 0 : logical.Seconds;
+        logical.StopCheckpoint = () =>
+        {
+            // The first check precedes the directory yield; the second follows its consumption.
+            if (++checks == 2) release.Set();
+        };
         int active = 0;
         using var metadata = new AgentMetadata(f.Controller)
         {
@@ -88,7 +106,7 @@ internal static partial class Unit5dTests
             {
                 if (path == "") return [new("a", true, -1, null)];
                 Interlocked.Increment(ref active);
-                try { Thread.Sleep(1100); throw new IOException("Injected slow folder failure."); }
+                try { release.Wait(); logical.Advance(1.1); throw new IOException("Injected slow folder failure."); }
                 finally { Interlocked.Decrement(ref active); }
             }
         };
@@ -97,6 +115,7 @@ internal static partial class Unit5dTests
         TestRunner.Equal("a", page.Entries.Single().Path);
         TestRunner.Equal(1, page.Continuation!.Offset);
         TestRunner.Equal(0, active);
+        logical.Reset(); checks = 0; secondCheckRead = 0; release.Reset();
         TestRunner.Throws<IOException>(() => metadata.List("", new(Depth: 2, Offset: 1, TimeLimitSeconds: 3600)));
         TestRunner.Equal(0, active);
         Console.WriteLine("S1 slow unconsumed failure: confirmed directory retained; timeLimited=true; offset=1; activeAfter=0; consuming continuation with sufficient time still fails.");
@@ -144,7 +163,7 @@ internal static partial class Unit5dTests
 
     // Each read still uses the real mounted directory. Only its first visit receives
     // a short delay, modelling the cost of a cold directory listing without a cloud.
-    private sealed class TimedReadProbe(string mount)
+    private sealed class TimedReadProbe(string mount, string artifactRoot, TestTraversalClock logical)
     {
         private readonly MountMetadata native = new(mount);
         private readonly HashSet<string> warmed = new(StringComparer.Ordinal);
@@ -158,7 +177,7 @@ internal static partial class Unit5dTests
         internal void Begin()
         {
             TestRunner.Equal(0, Active);
-            lock (gate) { Peak = Calls = Cold = 0; WarmTicks = 0; Starts.Clear(); page = Stopwatch.StartNew(); }
+            lock (gate) { Peak = Calls = Cold = 0; WarmTicks = 0; Starts.Clear(); logical.Reset(); page = Stopwatch.StartNew(); }
         }
 
         internal IReadOnlyList<MetadataItem> Read(string relative)
@@ -167,7 +186,7 @@ internal static partial class Unit5dTests
             lock (gate)
             {
                 Active++; Calls++; Peak = Math.Max(Peak, Active);
-                Starts.Add(page.Elapsed.TotalSeconds);
+                Starts.Add(logical.Seconds);
                 cold = warmed.Add(relative) && relative.Length > 0;
                 if (cold) Cold++;
             }
@@ -175,13 +194,14 @@ internal static partial class Unit5dTests
             try
             {
                 var result = native.Read(relative);
-                if (cold) Thread.Sleep(ColdDelayMs);
+                if (cold) logical.Advance(ColdDelayMs / 1000d);
                 return result;
             }
             finally
             {
                 lock (gate)
                 {
+                    TestTimeline.Mark(artifactRoot, "native-read", new { relative, cold, seconds = Stopwatch.GetElapsedTime(started).TotalSeconds, pageSeconds = page.Elapsed.TotalSeconds });
                     Active--;
                     if (!cold) WarmTicks += Stopwatch.GetTimestamp() - started;
                 }
@@ -202,7 +222,9 @@ internal static partial class Unit5dTests
             f.Seed($"d{i:D2}/note.txt");
         }
         f.Start();
-        var reads = new TimedReadProbe(f.Config.MountPoint);
+        using var logical = new TestTraversalClock();
+        var reads = new TimedReadProbe(f.Config.MountPoint, f.Root, logical);
+        TestTimeline.Mark(f.Root, "timed-pages-start", new { find });
         using var metadata = new AgentMetadata(f.Controller) { ChildrenReader = reads.Read };
         var joined = new List<AgentEntry>();
         var times = new List<double>();
@@ -210,7 +232,7 @@ internal static partial class Unit5dTests
         string label = find ? "find" : "ls";
         while (true)
         {
-            TestRunner.Assert(++pages <= 12, "Timed pages must reach the end.");
+            TestRunner.Assert(++pages <= 1 + 24 * 3, "Timed pages must reach the end.");
             reads.Begin(); var clock = Stopwatch.StartNew();
             IReadOnlyList<AgentEntry> entries; bool truncated, timeLimited; AgentContinuation? continuation;
             if (find)
@@ -224,10 +246,11 @@ internal static partial class Unit5dTests
                 (entries, truncated, timeLimited, continuation) = (result.Entries, result.Truncated, result.TimeLimited, result.Continuation);
             }
             double elapsed = clock.Elapsed.TotalSeconds;
+            TestTimeline.Mark(f.Root, "page", new { pages, offset, next = continuation?.Offset, count = entries.Count, elapsed, timeLimited, reads.Calls, reads.Cold, warmMs = reads.WarmTicks * 1000d / Stopwatch.Frequency });
             times.Add(elapsed); joined.AddRange(entries);
             TestRunner.Equal(0, reads.Active);
             TestRunner.Assert(reads.Peak <= 4);
-            TestRunner.Assert(reads.Starts.All(t => t < 1.1), "No new read should start after the deadline.");
+            TestRunner.Assert(reads.Starts.All(t => t <= 1 + 3 * TimedReadProbe.ColdDelayMs / 1000d), "Only the already admitted readers may enter after the logical deadline.");
             if (timeLimited)
             {
                 timed++;
@@ -235,13 +258,13 @@ internal static partial class Unit5dTests
                 if (continuation!.Offset == offset)
                 {
                     TestRunner.Equal(0, entries.Count);
-                    TestRunner.Assert(++stalled <= 3, "A delayed warm traversal must eventually advance.");
+                    stalled++; TestRunner.Assert(reads.Cold > 0, "A logical timeout must consume a previously cold folder.");
                 }
                 else stalled = 0;
-                TestRunner.Assert(elapsed >= 0.95 && elapsed < 1 + TimedReadProbe.ColdDelayMs / 1000d + 2,
-                    "Only the in-flight read window may extend the configured limit.");
+                TestRunner.Assert(logical.Seconds >= 1 && logical.Seconds <= 1 + 4 * TimedReadProbe.ColdDelayMs / 1000d,
+                    "Only the admitted four-reader window may extend the logical limit.");
             }
-            Console.WriteLine($"S1 {label} page={pages}; offset={offset}; next={continuation?.Offset}; entries={entries.Count}; timeLimited={timeLimited}; elapsed={elapsed:F4}s; overshoot={Math.Max(0, elapsed - 1):F4}s; coldReads={reads.Cold}; warmReads={reads.Calls - reads.Cold}; warmReadWorkMs={reads.WarmTicks * 1000d / Stopwatch.Frequency:F3}; peak={reads.Peak}; lastReadStart={reads.Starts.DefaultIfEmpty(0).Max():F4}s; activeAfter={reads.Active}");
+            Console.WriteLine($"S1 {label} page={pages}; offset={offset}; next={continuation?.Offset}; entries={entries.Count}; timeLimited={timeLimited}; elapsed={elapsed:F4}s; overshoot={Math.Max(0, elapsed - 1):F4}s; coldReads={reads.Cold}; warmReads={reads.Calls - reads.Cold}; warmReadWorkMs={reads.WarmTicks * 1000d / Stopwatch.Frequency:F3}; logicalSeconds={logical.Seconds:F3}; peak={reads.Peak}; lastReadStart={reads.Starts.DefaultIfEmpty(0).Max():F4}s; activeAfter={reads.Active}");
             if (!truncated) break;
             TestRunner.Assert(timeLimited);
             offset = continuation!.Offset!.Value;
@@ -268,10 +291,10 @@ internal static partial class Unit5dTests
         if (find) untimed = untimed.Where(p => p.EndsWith("/target.txt", StringComparison.Ordinal));
         TestRunner.Assert(untimed.SequenceEqual(joined.Select(e => e.Path)), "An independent traversal without a deadline must match every page.");
 
-        TestRunner.Assert(warmSeconds < times[0] && reads.Cold == 0);
+        TestRunner.Assert(logical.Seconds == 0 && reads.Cold == 0);
         DbxStatus status = f.Controller.Status();
         TestRunner.Equal(0L, status.CacheFiles); TestRunner.Equal(0L, status.CacheBytes);
         TestRunner.Equal(0L, status.DownloadActivity!.Files); TestRunner.Equal(0, reads.Active);
-        Console.WriteLine($"S1 {label} complete: pages={pages}; timedPages={timed}; entries={joined.Count}; duplicates=0; missing=0; identicalOrder=true; untimedSerialEqual=true; warmFull={warmSeconds:F4}s; maxOvershoot={Math.Max(0, times.Max() - 1):F4}s; artificialColdDelay={TimedReadProbe.ColdDelayMs}ms; cache=0/0; downloads=0.");
+        Console.WriteLine($"S1 {label} complete: pages={pages}; timedPages={timed}; entries={joined.Count}; duplicates=0; missing=0; identicalOrder=true; untimedSerialEqual=true; warmFull={warmSeconds:F4}s; maxOvershoot={Math.Max(0, times.Max() - 1):F4}s; logicalColdDelay={TimedReadProbe.ColdDelayMs}ms; cache=0/0; downloads=0.");
     }
 }

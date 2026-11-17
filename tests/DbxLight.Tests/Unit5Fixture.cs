@@ -18,7 +18,7 @@ internal sealed class Unit5Fixture : IDisposable
     private readonly Dictionary<int, RuntimeState> owned = [];
     public Unit5Fixture(string label, bool writable = true, string writeBack = "2s", string[]? hidden = null, bool cloudNames = false)
     {
-        Root = Path.Combine(@"D:\dbxl-test", "run-u5-" + label + "-" + Guid.NewGuid().ToString("N"));
+        Root = Path.Combine(TestPaths.WorkRoot, "run-u5-" + label + "-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Root);
         string remote = Path.Combine(Root, "remote"); Directory.CreateDirectory(remote);
         string empty = Path.Combine(Root, "empty.conf"); File.WriteAllText(empty, "", new UTF8Encoding(false));
@@ -27,6 +27,7 @@ internal sealed class Unit5Fixture : IDisposable
         string source = cloudNames ? ":local,encoding='Slash,Ctl,Del,Dot':" + remote : remote;
         Config = new DbxConfig
         {
+            UpdateCheck = false,
             Remote = source, WriteAllowedRemotes = writable ? [source] : [], RcloneConfigPath = empty,
             MountPoint = new[] { "U:", "V:", "W:" }.First(MountPaths.IsAvailable),
             CacheDir = Path.Combine(Root, "cache"), RescueDir = Path.Combine(Root, "rescue"), LogDir = Path.Combine(Root, "logs"), RcPort = port,

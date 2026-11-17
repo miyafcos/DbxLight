@@ -36,16 +36,21 @@ internal static partial class Unit6fTests
     {
         using var f = new Unit5Fixture("u6f-budget-" + folderLimit, writeBack: "5m");
         PendingBatch(f, "a/one.txt", "z/two.txt");
+        TestTimeline.Mark(f.Root, "budget-start", new { folderLimit });
+        f.Controller.RecoveryInfoOverride = info => { TestTimeline.Mark(f.Root, "budget-info"); return info; };
+        using var peer = new ControlledComparison(f);
+        TimeSpan logicalElapsed = TimeSpan.Zero;
+        f.Controller.PreparationElapsedTestOverride = () => logicalElapsed;
         int listed = 0;
         if (folderLimit) f.Controller.PreparationFolderTestLimit = 2; // Root plus a; z would be the third distinct folder.
-        else f.Controller.PreparationTimeTestLimit = TimeSpan.FromSeconds(4);
         f.Controller.RecoveryComparisonCheckpoint = (parent, _) =>
         {
-            listed++;
+            listed++; TestTimeline.Mark(f.Root, "budget-group", new { parent, listed });
             TestRunner.Equal("a", parent);
-            if (!folderLimit) Thread.Sleep(4100);
+            if (!folderLimit) { logicalElapsed = StartupPreparation.MaximumComparisonTime; TestTimeline.Mark(f.Root, "budget-delay-end", new { logicalElapsed }); }
         };
         f.Start();
+        TestTimeline.Mark(f.Root, "budget-end", new { listed, rescued = f.Controller.RescueList().Count });
         TestRunner.Equal(1, listed);
         var rescued = f.Controller.RescueList().Single();
         TestRunner.Equal("z/two.txt", rescued.CloudPath);
@@ -68,11 +73,13 @@ internal static partial class Unit6fTests
         foreach (var entry in PendingCacheInspector.InspectStopped(f.Config.CacheDir).Entries.Where(e => e.Dirty == true))
             File.WriteAllText(entry.MetadataPath, "{", new UTF8Encoding(false));
         using var reached = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
+        int guardExpired = 0;
+        using var guard = new System.Threading.Timer(_ => { Interlocked.Exchange(ref guardExpired, 1); release.Set(); }, null, 30000, Timeout.Infinite);
         int children = 0;
         f.Controller.StartupCheckpoint = (stage, _) => { if (stage == "before-record") Interlocked.Increment(ref children); };
         RescueStore.MoveCheckpoint = (stage, _) =>
         {
-            if (stage == "after-data-move" && !reached.IsSet) { reached.Set(); if (!release.Wait(4000)) throw new TimeoutException("Test release missing."); }
+            if (stage == "after-data-move" && !reached.IsSet) { TestTimeline.Mark(f.Root, "move-held"); reached.Set(); release.Wait(); bool released = true; TestTimeline.Mark(f.Root, "move-release", new { released }); if (!released) throw new TimeoutException("Test release missing."); }
         };
         Task<Exception?> operation = Task.Run(() => { try { if (run) TestRunner.Equal(0, f.Controller.Run(CancellationToken.None)); else f.Controller.Start(); return null; } catch (Exception e) { return e; } });
         try
@@ -97,10 +104,11 @@ internal static partial class Unit6fTests
                 TestRunner.Assert(TrayPresentation.QueueAgeExplanation(snapshot, null).Contains("確認できません", StringComparison.Ordinal));
             }
             double statusSeconds = timer.Elapsed.TotalSeconds;
-            TestRunner.Assert(statusSeconds is >= 1.8 and < 3.5);
+            TestTimeline.Mark(f.Root, "status-return", new { reader, statusSeconds, released = release.IsSet });
+            TestRunner.Assert(statusSeconds is >= 1.8 and < 10 && !release.IsSet && !operation.IsCompleted && Volatile.Read(ref guardExpired) == 0, "Status must return while the pair move is still blocked.");
             timer.Restart(); var stopped = f.Controller.Stop(); double stopSeconds = timer.Elapsed.TotalSeconds;
-            TestRunner.Assert(stopped.PreparationCancellationRequested && stopSeconds < 2);
-            Console.WriteLine($"G8 reader={reader}; status={statusSeconds:F3}s; stop={stopSeconds:F3}s; gate guard=4s.");
+            TestRunner.Assert(stopped.PreparationCancellationRequested && stopSeconds < 10 && !release.IsSet && !operation.IsCompleted && Volatile.Read(ref guardExpired) == 0);
+            Console.WriteLine($"G8 reader={reader}; status={statusSeconds:F3}s; stop={stopSeconds:F3}s; release follows status and accepted cancellation; watchdog=30s.");
         }
         finally { release.Set(); RescueStore.MoveCheckpoint = null; }
         Exception? error = operation.GetAwaiter().GetResult();

@@ -55,7 +55,7 @@ internal enum StopChoice { Cancel, Wait, Force }
 internal sealed class StopChoiceForm : Form
 {
     public StopChoice Choice { get; private set; }
-    public StopChoiceForm(long? count, bool exiting, string? reason = null)
+    public StopChoiceForm(long? count, bool exiting, string? reason = null, bool allowForce = true)
     {
         Ui.Configure(this, exiting ? "DbxLight を終了" : "DbxLight を一時停止", new Size(720, reason is null ? 304 : 368));
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -72,6 +72,7 @@ internal sealed class StopChoiceForm : Form
         column.Controls.Add(explanation, 0, 1);
         Button cancel = Ui.Button("戻る", (_, _) => { Choice = StopChoice.Cancel; Close(); });
         Button force = Ui.Button(exiting ? "強制終了" : "強制的に一時停止", (_, _) => { Choice = StopChoice.Force; Close(); });
+        force.Enabled = allowForce;
         Button wait = Ui.Button("アップロードが終わるまで待つ", (_, _) => { Choice = StopChoice.Wait; Close(); });
         column.Controls.Add(Ui.Buttons(cancel, force, wait), 0, 2);
         Controls.Add(column);

@@ -218,9 +218,11 @@ internal static class Unit3aTests
         private readonly Task server;
         private int stopping;
 
-        public RcFixture()
+        public RcFixture(string? artifactParent = null)
         {
-            Root = Path.Combine(UnitTests.RepositoryRoot(), "_test-work", "unit3a-" + Guid.NewGuid().ToString("N"));
+            Root = artifactParent is null
+                ? Path.Combine(UnitTests.RepositoryRoot(), "_test-work", "unit3a-" + Guid.NewGuid().ToString("N"))
+                : Path.Combine(artifactParent, "unit3a-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
             string remote = Path.Combine(Root, "remote"); Directory.CreateDirectory(remote);
             string empty = Path.Combine(Root, "empty.conf"); File.WriteAllText(empty, "", new UTF8Encoding(false));
@@ -229,7 +231,7 @@ internal static class Unit3aTests
             Config = new ConfigStore(Path.Combine(Root, "config.json"));
             State = new StateStore(Path.Combine(Root, "runtime", "state.json"));
             Controller = new MountController(Config, State);
-            Config.Save(new DbxConfig { Remote = remote, RcloneConfigPath = empty, NetworkMode = false,
+            Config.Save(new DbxConfig { UpdateCheck = false, Remote = remote, RcloneConfigPath = empty, NetworkMode = false,
                 MountPoint = Path.Combine(Root, "mount"), CacheDir = Path.Combine(Root, "cache"),
                 LogDir = Path.Combine(Root, "logs"), RcPort = port });
             var info = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };

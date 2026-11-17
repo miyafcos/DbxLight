@@ -11,9 +11,12 @@ internal static class SmokeRunner
 {
     public static int Run(AppOptions options)
     {
+        string workRoot;
+        try { workRoot = TestWorkPaths.WorkRoot; }
+        catch (IOException error) { Console.Error.WriteLine(error.Message); return 1; }
         string output = Path.GetFullPath(options.SmokeOutput!);
         Directory.CreateDirectory(output);
-        string root = Path.Combine(@"D:\dbxl-test", "run-tray-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + "-" + Guid.NewGuid().ToString("N")[..6]);
+        string root = Path.Combine(workRoot, "run-tray-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff") + "-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(root);
         string remote = Path.Combine(root, "remote");
         foreach (string path in new[] { "01 業務資料", "01 業務資料/見本", "02 共有", "03 記録" }) Directory.CreateDirectory(Path.Combine(remote, path));

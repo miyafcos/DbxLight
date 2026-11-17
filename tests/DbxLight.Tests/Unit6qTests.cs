@@ -6,6 +6,7 @@ internal static class Unit6qTests
 {
     internal static void Run(TestRunner runner, string? issue = null)
     {
+        if (issue == "T3") { runner.Test("6q T3: OS releases control gate when its bounded worker exits unexpectedly", GateCrashReleases); return; }
         if (issue is null or "all" or "T1")
         {
             runner.Test("6q T1: busy observations preserve child and state, then resume and restart", () => BusyWatch(false));
@@ -15,13 +16,20 @@ internal static class Unit6qTests
         }
     }
 
-    private static void GateCrashReleases()
+    internal static void GateCrashReleases()
     {
         using var gate = new TestControlGate(childProcess: true);
         gate.Acquire();
         TestRunner.Assert(!ControlGate.TryExecute(() => true));
         gate.Crash();
-        TestRunner.Assert(ControlGate.TryExecute(() => true), "OS did not release the crashed worker's mutex.");
+        var retry = System.Diagnostics.Stopwatch.StartNew();
+        bool acquired;
+        do
+        {
+            acquired = ControlGate.TryExecute(() => true);
+            if (!acquired) Thread.Sleep(25);
+        } while (!acquired && retry.Elapsed < TimeSpan.FromSeconds(5));
+        TestRunner.Assert(acquired, "OS did not release the crashed worker's mutex.");
         Console.WriteLine("6q gate worker: owned PID exited; abandoned control mutex reacquired; holding guard=4s.");
     }
 

@@ -232,7 +232,7 @@ internal static class Unit3cTests
         private readonly List<RuntimeState> owned = [];
         internal LockoutMount(string label)
         {
-            Root = Path.Combine(@"D:\dbxl-test", "run-u3c-" + label + "-" + Guid.NewGuid().ToString("N"));
+            Root = Path.Combine(TestPaths.WorkRoot, "run-u3c-" + label + "-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
             string remote = Path.Combine(Root, "remote"); Directory.CreateDirectory(remote);
             string empty = Path.Combine(Root, "empty.conf"); File.WriteAllText(empty, "", new UTF8Encoding(false));

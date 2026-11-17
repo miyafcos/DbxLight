@@ -194,7 +194,7 @@ internal static partial class Unit4Tests
 
 internal sealed class LoginFixture : IDisposable
 {
-    internal string Root { get; } = Path.Combine(@"D:\dbxl-test", "run-unit4-" + Guid.NewGuid().ToString("N"));
+    internal string Root { get; } = Path.Combine(TestPaths.WorkRoot, "run-unit4-" + Guid.NewGuid().ToString("N"));
     internal string Executable { get; }
     internal string Conf => CredentialSwitch.KeyPath(Controller.Config.PathName);
     internal MountController Controller { get; }
@@ -207,14 +207,15 @@ internal sealed class LoginFixture : IDisposable
         Executable = Path.Combine(fake, "DbxLight.FakeRclone.exe");
         Scenario(scenario);
         Controller = new(new ConfigStore(Path.Combine(Root, "config.json"), initialConfig: new DbxConfig
-        { RclonePath = Executable, CacheDir = Path.Combine(Root, "cache"), RescueDir = Path.Combine(Root, "rescue"), LogDir = Path.Combine(Root, "logs") }),
+        {
+            UpdateCheck = false, RclonePath = Executable, CacheDir = Path.Combine(Root, "cache"), RescueDir = Path.Combine(Root, "rescue"), LogDir = Path.Combine(Root, "logs") }),
             new StateStore(Path.Combine(Root, "runtime", "state.json")));
         // Missing app config is intentional: the wizard must not save anything before Finish.
     }
     internal void Seed(string remote = "", string? conf = null)
     {
         Directory.CreateDirectory(Path.Combine(Root, "cache"));
-        Controller.Config.Save(new DbxConfig { RclonePath = Executable, RcloneConfigPath = conf, Remote = remote,
+        Controller.Config.Save(new DbxConfig { UpdateCheck = false, RclonePath = Executable, RcloneConfigPath = conf, Remote = remote,
             CacheDir = Path.Combine(Root, "cache"), RescueDir = Path.Combine(Root, "rescue"), LogDir = Path.Combine(Root, "logs"), WriteAllowedRemotes = ["previous:"] });
     }
     internal void MarkPendingCache()

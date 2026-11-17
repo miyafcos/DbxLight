@@ -27,6 +27,13 @@ public static class Program
                 words.Remove("--json");
                 if (words.Contains("--json")) throw new ArgumentException("Duplicate option: --json");
             }
+            string[] swapArguments = [];
+            int swapSeparator = words.IndexOf("--");
+            if (swapSeparator >= 0 && words.Contains("update") && words.Contains("swap"))
+            {
+                swapArguments = words.Skip(swapSeparator).ToArray();
+                words.RemoveRange(swapSeparator, words.Count - swapSeparator);
+            }
             string? configPath = TakeOption(words, "--config");
             string? statePath = TakeOption(words, "--state");
             if (words.Count == 0 || words[0] is "help" or "--help" or "-h")
@@ -34,7 +41,16 @@ public static class Program
                 if (json) WriteJson(new { ok = true, usage = HelpText }); else Help();
                 return 0;
             }
+            if (words[0] is "version" or "--version")
+            {
+                Arity(words.Skip(1).ToArray(), 0);
+                if (json) WriteJson(new { ok = true, result = new { version = UpdateVersion.Current, commit = UpdateVersion.Commit } });
+                else Console.WriteLine(UpdateVersion.Current);
+                return 0;
+            }
+            if (words[0] == "snapshot") return AgentCommands.RunSnapshot(configPath, words.Skip(1).ToArray(), json, statePath);
             controller ??= new MountController(new ConfigStore(configPath), new StateStore(statePath));
+            if (words[0] == "update") return UpdateCommands.Run(controller, words.Skip(1).Concat(swapArguments).ToArray(), json);
             string command = words[0];
             string[] operands = words.Skip(1).ToArray();
             reading = agent || command is "status" or "hidden" or "folders" or "doctor" ||
@@ -187,6 +203,14 @@ public static class Program
                 default: throw new ArgumentException("Unknown command: " + command);
             }
         }
+        catch (Exception e) when (requestedCommand == "snapshot" && e is not OutOfMemoryException)
+        {
+            var failed = new SnapshotResult { Code = e is ArgumentException or FormatException or OverflowException ? "usage" : "internal_error",
+                ExitCode = e is ArgumentException or FormatException or OverflowException ? 2 : 1,
+                ObservedThroughUtc = DateTimeOffset.UtcNow };
+            WriteJson(failed);
+            return failed.ExitCode;
+        }
         catch (ControlBusyException) when (reading)
         {
             if (json)
@@ -240,7 +264,7 @@ public static class Program
     internal const string BusyMessage = "Another DbxLight operation is running. Retry in a few seconds.";
     private static T ReadControl<T>(Func<T> read)
     {
-        if (ControlGate.TryExecute(read, TimeSpan.FromSeconds(2), out var result)) return result;
+        if (ControlGate.TryExecute(read, MountController.ReadControlWait, out var result)) return result;
         throw new ControlBusyException();
     }
 
@@ -324,6 +348,6 @@ public static class Program
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
     };
     internal static void WriteJson(object value) => Console.WriteLine(JsonSerializer.Serialize(value, OutputOptions));
-    private const string HelpText = "dbxl [--config <path>] [--state <path>] [--json] help|run|start|stop [--force]|restart|status|hide <path>|unhide <path>|hidden [--max N] [--offset N]|folders [path] [--max N] [--offset N]|set <key> <value>|config show|doctor|recovery clear --i-understand-pending-may-be-lost|rescue list [--all|--max N]|rescue acknowledge <id>|ls <path> [--recursive] [--depth N] [--max N] [--offset N] [--include-hidden] [--time-limit seconds]|find <term> [--in <path>] [--type file|dir] [--depth N] [--max N] [--offset N] [--time-limit seconds]|stat <path> [--time-limit seconds]|wait <path>...|wait --all [--timeout seconds]|refresh [path]|resolve <path-or-url>|agent-guide [--format markdown|json]";
+    private const string HelpText = "dbxl [--config <path>] [--state <path>] [--json] help|snapshot list <folder> --entries <NDJSON> --cursor-out <cursor> [--cursor-file <cursor>] [--limit N] [--max-rps N] [--deadline-seconds N] --json|snapshot metadata --paths-file <JSONL> --output <JSONL> [--max-rps N] [--deadline-seconds N] --json|snapshot fetch --plan <JSONL> --store <folder> [--parallel N] [--failures <JSONL>] [--max-rps N] [--deadline-seconds N] --json|run|start|stop [--force]|restart|status|hide <path>|unhide <path>|hidden [--max N] [--offset N]|folders [path] [--max N] [--offset N]|set <key> <value>|config show|doctor|recovery clear --i-understand-pending-may-be-lost|rescue list [--all|--max N]|rescue acknowledge <id>|ls <path> [--recursive] [--depth N] [--max N] [--offset N] [--include-hidden] [--time-limit seconds]|find <term> [--in <path>] [--type file|dir] [--depth N] [--max N] [--offset N] [--time-limit seconds]|stat <path> [--time-limit seconds]|wait <path>...|wait --all [--timeout seconds]|refresh [path]|resolve <path-or-url>|agent-guide [--format markdown|json]|version|--version|update check|update download|update apply [--from <zip>] [--sha256 <hex>] --yes";
     private static void Help() => Console.WriteLine(HelpText);
 }

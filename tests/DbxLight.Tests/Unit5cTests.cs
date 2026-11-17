@@ -103,7 +103,7 @@ internal static partial class Unit5cTests
 
     private static void ReparsePoints()
     {
-        string root = Path.Combine(@"D:\dbxl-test", "run-u5c-links-" + Guid.NewGuid().ToString("N"));
+        string root = Path.Combine(TestPaths.WorkRoot, "run-u5c-links-" + Guid.NewGuid().ToString("N"));
         string outside = Path.Combine(root, "target"), view = Path.Combine(root, "view");
         Directory.CreateDirectory(outside); Directory.CreateDirectory(view);
         File.WriteAllText(Path.Combine(outside, "must-not-follow.txt"), "test");

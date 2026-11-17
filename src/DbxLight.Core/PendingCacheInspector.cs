@@ -4,7 +4,12 @@ using System.Text.Json;
 namespace DbxLight.Core;
 
 public sealed record CacheEntry(string Relative, string DataPath, string MetadataPath, bool HasData, bool HasMetadata,
-    bool MetadataValid, bool? Dirty, long? Size, DateTimeOffset? ModTime, string? Fingerprint, bool CompleteData, string? Problem);
+    bool MetadataValid, bool? Dirty, long? Size, DateTimeOffset? ModTime, string? Fingerprint, bool CompleteData, string? Problem)
+{
+    // Observation facts for wait --all only; recovery still treats a body-only pair as unknown.
+    internal long? ObservedBytes { get; init; }
+    internal DateTimeOffset? ObservedModifiedUtc { get; init; }
+}
 
 public sealed record CacheInspection(bool Clean, int PendingFiles, string Detail)
 {
@@ -37,6 +42,11 @@ public static class PendingCacheInspector
                     hasData, hasMeta, false, null, null, null, null, false, null);
                 try
                 {
+                    if (hasData && !hasMeta)
+                    {
+                        var physical = new FileInfo(body!);
+                        entry = entry with { ObservedBytes = physical.Length, ObservedModifiedUtc = physical.LastWriteTimeUtc };
+                    }
                     if (!hasData || !hasMeta) throw new InvalidDataException("\u30d5\u30a1\u30a4\u30eb\u3068\u7ba1\u7406\u60c5\u5831\u304c\u5bfe\u5fdc\u3057\u3066\u3044\u307e\u305b\u3093\u3002");
                     using var doc = JsonDocument.Parse(ReadMetadata(info!, live));
                     var item = doc.RootElement;

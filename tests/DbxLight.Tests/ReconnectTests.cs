@@ -12,7 +12,7 @@ internal static class ReconnectTests
 {
     public static void DelayedRead()
     {
-        string root = Path.Combine(@"D:\dbxl-test", "run-u3a-display-" + Guid.NewGuid().ToString("N"));
+        string root = Path.Combine(TestPaths.WorkRoot, "run-u3a-display-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         string remote = Path.Combine(root, "remote"); Directory.CreateDirectory(remote);
         string empty = Path.Combine(root, "empty.conf"); File.WriteAllText(empty, "", new UTF8Encoding(false));
@@ -22,7 +22,7 @@ internal static class ReconnectTests
         var config = new ConfigStore(Path.Combine(root, "config.json"));
         var state = new StateStore(Path.Combine(root, "runtime", "state.json"));
         var controller = new MountController(config, state);
-        config.Save(new DbxConfig { Remote = remote, RcloneConfigPath = empty, MountPoint = drive,
+        config.Save(new DbxConfig { UpdateCheck = false, Remote = remote, RcloneConfigPath = empty, MountPoint = drive,
             RcPort = port, CacheDir = Path.Combine(root, "cache"), LogDir = Path.Combine(root, "logs"),
             CacheMaxSize = "8M", CacheMinFreeSpace = "16M", PollInterval = "0", DirCacheTime = "1m" });
         var owned = new Dictionary<int, RuntimeState>();

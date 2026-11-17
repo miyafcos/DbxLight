@@ -29,7 +29,7 @@ public static class AgentGuide
             safe ? "操作前に dbxl status --json で稼働状態と回復状態を確認する。" : "回復またはプロセスの確認がまだ。人に知らせ、自分で解除しない。",
             "- フォルダの中身を再帰で検索しない。先に dbxl ls / dbxl find で名前から当たりを付け、要るファイルだけ開く。",
             "- rg、grep、再帰読み取りをマウント先全体にかけない。内容の検索は選んだファイルだけにする。",
-            "- ファイルを閉じてから dbxl wait <パス> --json を呼び、待っている間に同じファイルを保存し直さない。0 は中身の一致までは保証しない。終了値 0 を確認してから「保存した」と報告する。",
+            "- ファイルを閉じてから dbxl wait <パス> --json を呼び、待っている間に同じファイルを保存し直さない。0 は中身の一致までは保証しない。終了値 0 を確認してから「保存した」と報告する。wait --all は名前の変更の途中で残った本体を待ちの対象から外すことがある。その本体は常駐を止めたときに回復の対象として残る。",
             "- wait が 0 以外なら、Dropbox 上へアップロードされたことを確認できていないと報告し、ローカルの保存を保つ。",
             "- busy は未確認（成功でも失敗でもない）。数秒おいて同じコマンドを呼び直す。",
             "- 見えるはずのファイルが無ければ、無いと言う前に dbxl refresh <フォルダ> --json をして再度見る。",
@@ -42,7 +42,7 @@ public static class AgentGuide
             "- 稼働中の一覧・検索・stat は全角の記号も Windows が見せる名前のまま返す。返った path を使う。",
             "- skippedUnsafe>0 は安全でない名前を省いた件数。そのフォルダで「無い」と断言せず、人に知らせる。",
             "- truncated=true は continuation の案内に従う（offset があれば --offset）。depthLimited=true なら必要なフォルダへ絞って深さを増やす。",
-            "- timeLimited=true なら、同じ引数に continuation.offset の --offset を付けて続ける。範囲が分かるなら --in で絞る。",
+            "- timeLimited=true なら、continuation.hint を読み、前に進まない場合は --time-limit を延ばすか --in で絞る。それ以外は、同じ引数に continuation.offset の --offset を付けて続ける。範囲が分かるなら --in で絞る。",
             "| コマンド | 用途 |",
             "| --- | --- |",
             "| ls <パス> --json | 中身をダウンロードせず一覧（既定 1 階層・1000 件） |",
@@ -62,7 +62,7 @@ public static class AgentGuide
             "| 5 | 読み取り専用で新しく保存できない |",
             "| 6 | 動いていない |",
             "",
-            "既存コマンドは通常失敗 1、アップロード待ちの拒否 3。status は終了値だけで判断せず、JSON の ok・recoveryRequired・processUncertain も読む。"
+            "既存コマンドは通常失敗 1、アップロード待ちの拒否 3。status は終了値だけで判断せず、JSON の ok・recoveryRequired・processUncertain も読む。snapshot list / metadata / fetch --json はマウント不要の API 読み出し。引数・出力・終了値は docs/cli.md を参照し、0 と complete=true を確かめる。新しいバージョンは dbxl update check --json で確認する。入れ替えは人が決める。"
         });
         return new(safe, code, safe ? "Agent guidance generated." : "Verification is incomplete; tell a person.",
             mount, readOnly, status.RecoveryRequired, status.ProcessUncertain, markdown);

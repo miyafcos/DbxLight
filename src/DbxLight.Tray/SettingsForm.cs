@@ -9,6 +9,7 @@ public sealed class SettingsForm : DbxForm
     private readonly ComboBox drive = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox remote = new(), cacheLimit = new(), cacheDir = new();
     private readonly CheckBox autoStart = new() { Text = "Windows の起動時に始める", AutoSize = true };
+    private readonly CheckBox updateCheck = new() { Text = "新しいバージョンを自動で確認する", AutoSize = true };
     private string? noticeMount;
     private readonly TextBox shellNotice = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill,
         MinimumSize = new Size(0, 88), ScrollBars = ScrollBars.Vertical, Visible = false, BackColor = SystemColors.Window };
@@ -17,20 +18,21 @@ public sealed class SettingsForm : DbxForm
         ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BackColor = SystemColors.Window, BorderStyle = BorderStyle.None };
     private readonly Button apply;
     private readonly RegistrationService registration;
-    private readonly string executable;
+    private readonly string? executable;
     private readonly AppOptions options;
     private readonly Func<Func<DbxConfig, DbxConfig>, Task> save;
     private bool originalAutoStart;
+    internal bool AutoStartChanged => autoStart.Checked != originalAutoStart;
     private DbxConfig currentConfig;
     private readonly Func<DbxConfig, bool, bool, Task>? writeAccess;
     private readonly CheckBox writeEnabled = new() { Text = "書き込みを有効にする", AutoSize = true, AutoCheck = false };
 
-    public SettingsForm(DbxConfig config, RegistrationService registration, string executable, AppOptions options,
+    public SettingsForm(DbxConfig config, RegistrationService registration, string? executable, AppOptions options,
         Func<Func<DbxConfig, DbxConfig>, Task> save, Func<Task>? reauthenticate = null, Func<Task>? logout = null, Func<DbxConfig, bool, bool, Task>? writeAccess = null)
     {
         currentConfig = config; this.writeAccess = writeAccess;
         this.registration = registration; this.executable = executable; this.options = options; this.save = save;
-        Ui.Configure(this, "DbxLight の設定", new Size(832, 752));
+        Ui.Configure(this, "DbxLight の設定", new Size(832, 848));
         var column = Ui.Column(9);
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         column.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -45,7 +47,7 @@ public sealed class SettingsForm : DbxForm
         column.Controls.Add(permission, 0, 0);
         column.Controls.Add(explanation, 0, 1);
         column.Controls.Add(Ui.Label("remote を変えても、書き込みを許すリモートの一覧になければ読み取り専用です。"), 0, 2);
-        var fields = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 6, Margin = Padding.Empty };
+        var fields = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8, Margin = Padding.Empty };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         retention.Items.AddRange(["30 分", "1 時間", "3 時間", "1 日", "1 週間"]);
@@ -57,7 +59,8 @@ public sealed class SettingsForm : DbxForm
         (string Title, Control Input)[] rows =
         [
             ("接続先 (remote)", remote), ("ローカルに残す時間", retention), ("キャッシュの上限 (例: 5G)", cacheLimit),
-            ("キャッシュの保存先", cacheDir), ("マウント先", drive), ("自動起動", autoStart)
+            ("キャッシュの保存先", cacheDir), ("マウント先", drive), ("自動起動", autoStart),
+            ("更新", updateCheck), ("バージョン", Ui.Label("バージョン " + UpdateVersion.Current))
         ];
         for (int i = 0; i < rows.Length; i++)
         {
@@ -65,6 +68,8 @@ public sealed class SettingsForm : DbxForm
             rows[i].Input.Dock = DockStyle.Fill; rows[i].Input.Margin = new Padding(0, 8, 0, 8);
             fields.Controls.Add(Ui.Label(rows[i].Title), 0, i); fields.Controls.Add(rows[i].Input, 1, i);
         }
+        updateCheck.Checked = config.UpdateCheck;
+        autoStart.Enabled = executable is not null;
         originalAutoStart = registration.IsAutoStart();
         autoStart.Checked = originalAutoStart;
         apply = Ui.Button("適用", async (_, _) => await ApplyAsync());
@@ -150,9 +155,9 @@ public sealed class SettingsForm : DbxForm
             string newRemote = remote.Text.Trim(), newCache = cacheDir.Text.Trim(), limit = cacheLimit.Text.Trim();
             string newDrive = (string?)drive.SelectedItem ?? throw new ArgumentException("マウント先を選んでください。");
             string keep = Retentions[retention.SelectedIndex];
-            await save(c => c with { Remote = newRemote, Retention = keep, CacheDir = newCache, CacheMaxSize = limit, MountPoint = newDrive });
+            await save(c => c with { Remote = newRemote, Retention = keep, CacheDir = newCache, CacheMaxSize = limit, MountPoint = newDrive, UpdateCheck = updateCheck.Checked });
             // Registration is changed only after the guarded config update succeeds.
-            if (autoStart.Checked != originalAutoStart)
+            if (executable is not null && autoStart.Checked != originalAutoStart)
             {
                 registration.SetAutoStart(autoStart.Checked, executable, options);
                 originalAutoStart = autoStart.Checked;

@@ -6,11 +6,87 @@ internal static class Program
 {
     public static int Main(string[] args)
     {
+        // Every child CLI inherits a closed loopback feed before any resident can start.
+        var updatePort = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        updatePort.Start(); int unusedUpdatePort = ((System.Net.IPEndPoint)updatePort.LocalEndpoint).Port; updatePort.Stop();
+        Environment.SetEnvironmentVariable("DBXL_UPDATE_FEED", $"http://127.0.0.1:{unusedUpdatePort}/");
+        if (args is ["--all"])
+        {
+            int Count(string name)
+            {
+                var processes = System.Diagnostics.Process.GetProcessesByName(name);
+                foreach (var process in processes) process.Dispose();
+                return processes.Length;
+            }
+            Console.WriteLine("External process counts: DbxLight=" + Count("DbxLight") + "; dbxl=" + Count("dbxl"));
+        }
+        try { _ = TestPaths.WorkRoot; }
+        catch (IOException error) { Console.Error.WriteLine(error.Message); return 1; }
         Environment.SetEnvironmentVariable("DBXL_RESCUE_DIR", Path.Combine(UnitTests.RepositoryRoot(), "_test-work", "unit6a-rescue-default"));
+        if (args.Length == 3 && args[0] == "--unit8-lock")
+        {
+            using var locked = new FileStream(args[1], FileMode.Open, FileAccess.Read, FileShare.None);
+            Console.WriteLine("locked"); Console.Out.Flush();
+            while (!File.Exists(args[2])) Thread.Sleep(25);
+            return 0;
+        }
+        if (args.Length == 2 && args[0] == "--unit8-child")
+        {
+            using var release = EventWaitHandle.OpenExisting(args[1]);
+            Console.WriteLine("ready"); Console.Out.Flush(); return release.WaitOne(TimeSpan.FromSeconds(30)) ? 0 : 1;
+        }
+        if (args.Length is 1 or 2 && args[0] == "--unit8")
+        {
+            var focused = new TestRunner(); Unit8Tests.Run(focused, args.Length == 2 ? args[1] : null);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
         if (args.Length == 4 && args[0] == "--unit6d-key-child") return Unit6dTests.KeyChild(args[1], args[2], args[3]);
         if (args.Length == 4 && args[0] == "--unit6d-process-child") return Unit6dTests.ProcessChild(args[1], args[2], args[3]);
+        if (args.Length == 2 && args[0] == "--snapshot-review")
+        {
+            var focused = new TestRunner(); SnapshotTests.ReviewTests(focused, args[1]);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
+        if (args.Length == 1 && args[0] == "--snapshot")
+        {
+            var snapshot = new TestRunner(); SnapshotTests.Run(snapshot);
+            Console.WriteLine($"RESULT: {(snapshot.Failures == 0 ? "PASS" : "FAIL")} ({snapshot.Passed}/{snapshot.Count})");
+            return snapshot.Failures == 0 ? 0 : 1;
+        }
         if (args.Length == 1 && args[0] == "--unit6f-exit") { Thread.Sleep(500); return 0; }
         if (args.Length == 2 && args[0] == "--unit6q-gate-child") return TestControlGate.Child(args[1]);
+        if (args.Length is 1 or 2 && args[0] == "--unit6s7rc")
+        {
+            var focused = new TestRunner(); Unit6s7rTests.RunReview3(focused, args.Length == 2 ? args[1] : null);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
+        if (args.Length is 1 or 2 && args[0] == "--unit6s7rb")
+        {
+            var focused = new TestRunner(); Unit6s7rTests.RunReview2(focused, args.Length == 2 ? args[1] : null);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
+        if (args.Length is 1 or 2 && args[0] == "--unit6s7r")
+        {
+            var focused = new TestRunner(); Unit6s7rTests.Run(focused, args.Length == 2 ? args[1] : null);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
+        if (args.Length is 1 or 2 && args[0] == "--unit7")
+        {
+            var focused = new TestRunner(); Unit7Tests.Run(focused, args.Length == 2 ? args[1] : null);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
+        if (args.Length is 1 or 2 && args[0] == "--unit6s")
+        {
+            var focused = new TestRunner(); Unit6sTests.Run(focused, args.Length == 2 ? args[1] : null);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
+        }
         if (args.Length == 2 && args[0] == "--unit6q")
         {
             var focused = new TestRunner(); Unit6qTests.Run(focused, args[1]);
@@ -120,7 +196,7 @@ internal static class Program
             Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
             return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
         }
-        if (args.Length == 1 && args[0] == "--unit5c-e2e")
+        if (args.Length == 1 && args[0] is "--e2e" or "--unit5c-e2e")
         {
             var focused = new TestRunner(); EndToEnd.Run(focused);
             Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
@@ -164,11 +240,12 @@ internal static class Program
         if (args.Length == 5 && args[0] == "--pipe-host") return TrayTests.PipeHost(args);
         if (args.Length != 1 || args[0] is not ("--unit" or "--all"))
         {
-            Console.Error.WriteLine("Usage: DbxLight.Tests --unit|--all");
+            Console.Error.WriteLine("Usage: DbxLight.Tests --unit|--all|--e2e");
             return 2;
         }
         var runner = new TestRunner();
         UnitTests.Run(runner);
+        SnapshotTests.Run(runner);
         Unit4Tests.Run(runner);
         TrayTests.Run(runner);
         Unit3aTests.Run(runner, includeMounts: args[0] == "--all");
@@ -192,6 +269,12 @@ internal static class Program
         Unit6nTests.Run(runner);
         Unit6oTests.Run(runner);
         Unit6qTests.Run(runner);
+        Unit6sTests.Run(runner);
+        Unit7Tests.Run(runner);
+        Unit8Tests.Run(runner);
+        Unit6s7rTests.Run(runner);
+        Unit6s7rTests.RunReview2(runner);
+        Unit6s7rTests.RunReview3(runner);
         Unit6fTests.Run(runner);
         if (args[0] == "--all" && runner.Failures == 0) EndToEnd.Run(runner);
         Console.WriteLine($"RESULT: {(runner.Failures == 0 ? "PASS" : "FAIL")} ({runner.Passed}/{runner.Count})");
@@ -295,7 +378,7 @@ internal static class UnitTests
         {
             string root = Path.Combine(RepositoryRoot(), "_test-work", "unit-" + Guid.NewGuid().ToString("N"));
             var store = new ConfigStore(Path.Combine(root, "config.json"));
-            var c = new DbxConfig { Remote = @"D:\dbxl-test\unit-config", RcloneConfigPath = @"D:\dbxl-test\unit-empty.conf", Retention = "1d", HiddenPaths = ["\u898b\u672c\u30d5\u30a9\u30eb\u30c0"], TestOverrides = new() { WriteBack = "1s" } };
+            var c = new DbxConfig { Remote = Path.Combine(TestPaths.WorkRoot, @"unit-config"), RcloneConfigPath = Path.Combine(TestPaths.WorkRoot, @"unit-empty.conf"), Retention = "1d", HiddenPaths = ["\u898b\u672c\u30d5\u30a9\u30eb\u30c0"], TestOverrides = new() { WriteBack = "1s" } };
             store.Save(c);
             store.Save(store.Load() with { Retention = "3h" });
             TestRunner.Equal("3h", store.Load().Retention);
@@ -311,7 +394,7 @@ internal static class UnitTests
         });
         runner.Test("config: typed set and unknown key", () =>
         {
-            var c = ConfigStore.Set(new DbxConfig { Remote = @"D:\dbxl-test\typed-config", RcloneConfigPath = @"D:\dbxl-test\typed-empty.conf" }, "hiddenPaths", "[\"a\",\"a/b\"]");
+            var c = ConfigStore.Set(new DbxConfig { Remote = Path.Combine(TestPaths.WorkRoot, @"typed-config"), RcloneConfigPath = Path.Combine(TestPaths.WorkRoot, @"typed-empty.conf") }, "hiddenPaths", "[\"a\",\"a/b\"]");
             TestRunner.Equal(1, c.HiddenPaths.Length);
             c = ConfigStore.Set(c, "testOverrides.writeBack", "10s");
             TestRunner.Equal("10s", c.TestOverrides!.WriteBack);
@@ -380,7 +463,7 @@ internal static class UnitTests
             TestRunner.Equal(original, HiddenFolders.Render(paths));
     }
 
-    private static IReadOnlyList<string> Args(DbxConfig c) => RcloneArguments.Mount(c with { Remote = c.TestOverrides is null ? "sample:" : @"D:\dbxl-test\arguments", RcloneConfigPath = c.TestOverrides is null ? c.RcloneConfigPath : @"D:\dbxl-test\arguments-empty.conf" }, "C:\\test\\hidden.filter");
+    private static IReadOnlyList<string> Args(DbxConfig c) => RcloneArguments.Mount(c with { Remote = c.TestOverrides is null ? "sample:" : Path.Combine(TestPaths.WorkRoot, @"arguments"), RcloneConfigPath = c.TestOverrides is null ? c.RcloneConfigPath : Path.Combine(TestPaths.WorkRoot, @"arguments-empty.conf") }, "C:\\test\\hidden.filter");
 
     public static string RepositoryRoot()
     {

@@ -48,7 +48,10 @@ internal static class Unit6oTests
             f.CloudStatReply = () => (200, JsonSerializer.Serialize(new
             { item = new { Name = "two.txt", Path = "two.txt", IsDir = false, Size = file.Length, ModTime = file.LastWriteTimeUtc } }));
             // Prove this fixture can remember an uploaded result before adding contention.
-            var before = Cli(f.Controller, args);
+            // This positive control uses the real gate; foreign live reads must not
+            // turn its expected upload failure into an unrelated busy observation.
+            var before = ControlGate.Execute(() => Cli(f.Controller, args));
+            if (before.Exit != 4) File.WriteAllText(Path.Combine(f.Root, "positive-before.json"), before.Output);
             TestRunner.Equal(4, before.Exit);
             using var prior = JsonDocument.Parse(before.Output);
             var uploaded = prior.RootElement.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("path").GetString() == "two.txt");
@@ -95,7 +98,8 @@ internal static class Unit6oTests
         }
         finally { gate.Dispose(); }
         f.QueueReply = _ => (200, Queue(failed));
-        var retried = Cli(f.Controller, args);
+        var retried = ControlGate.Execute(() => Cli(f.Controller, args));
+        if (retried.Exit != (failed ? 4 : 3)) File.WriteAllText(Path.Combine(f.Root, "positive-after.json"), retried.Output);
         using var retry = JsonDocument.Parse(retried.Output);
         TestRunner.Equal(failed ? 4 : 3, retried.Exit);
         TestRunner.Equal(failed ? "upload_failed" : "timeout", retry.RootElement.GetProperty("code").GetString());
@@ -260,7 +264,7 @@ internal static class Unit6oTests
 
     private sealed class ReadFixture : IDisposable
     {
-        internal readonly string Root = Path.Combine(@"D:\dbxl-test", "run-u6o-" + Guid.NewGuid().ToString("N"));
+        internal readonly string Root = Path.Combine(TestPaths.WorkRoot, "run-u6o-" + Guid.NewGuid().ToString("N"));
         internal ConfigStore Store { get; }
         internal StateStore State { get; }
         internal MountController Controller { get; }

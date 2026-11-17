@@ -3,7 +3,7 @@ using DbxLight.Core;
 
 namespace DbxLight.Tray;
 
-internal sealed class ResidentContext : ApplicationContext
+internal sealed partial class ResidentContext : ApplicationContext
 {
     private readonly AppOptions options;
     private readonly ResidentWindow dispatcher = new() { Text = "DbxLight resident" };
@@ -51,9 +51,10 @@ internal sealed class ResidentContext : ApplicationContext
     public TraySnapshot Snapshot { get; private set; } = new(new(), [], [], false, null);
     public QueueAge? Oldest => ages.Oldest(DateTimeOffset.UtcNow);
 
-    public ResidentContext(AppOptions options, SingleInstance instance, Func<ResidentContext, Task>? started = null)
+    public ResidentContext(AppOptions options, SingleInstance instance, Func<ResidentContext, Task>? started = null, string[]? originalArguments = null)
     {
         this.options = options; this.started = started;
+        relaunchArguments = RegistrationService.StartupArguments(options);
         Controller = new(new ConfigStore(options.ConfigPath), new StateStore(options.StatePath));
         dispatcher.QuerySessionEnd = QuerySessionEnd;
         dispatcher.SessionEndChanged = SessionEndChanged;
@@ -65,6 +66,7 @@ internal sealed class ResidentContext : ApplicationContext
         menu.Items.Add("表示しないフォルダ", null, (_, _) => ShowHidden());
         menu.Items.Add("設定", null, (_, _) => ShowSettings());
         menu.Items.Add("ログインと接続先", null, async (_, _) => await ShowSetupAsync());
+        AddUpdateMenu(menu);
         pause = new ToolStripMenuItem("一時停止", null, async (_, _) =>
         {
             if (Phase == ResidentPhase.Stopped) await StartMountedAsync();
@@ -94,6 +96,7 @@ internal sealed class ResidentContext : ApplicationContext
             DbxConfig loaded = await Task.Run(Controller.Config.Load);
             initializationCancellation.Token.ThrowIfCancellationRequested();
             Config = loaded; configurationKnown = true;
+            await ReadUpdateResultAsync();
             if (string.IsNullOrWhiteSpace(Config.Remote))
             {
                 var checks = await Task.Run(() => Doctor.Check(Config));
@@ -347,9 +350,15 @@ internal sealed class ResidentContext : ApplicationContext
                 catch (Exception e) { ReportStopFailure(shouldExit, e, shouldExit ? ResidentPhase.Exiting : ResidentPhase.Stopping); }
             }
         }
-        catch (Exception e) { Notify("状態を確認できません", Ui.Failure(e), ToolTipIcon.Warning); }
+        catch (Exception e) { ReportRefreshFailure(Phase, e, (title, detail, icon) => Notify(title, detail, icon)); }
         finally { refreshing = false; refreshCompletion = null; completion.TrySetResult(); }
     }
+    internal static void ReportRefreshFailure(ResidentPhase phase, Exception error, Action<string, string, ToolTipIcon> notify)
+    {
+        if (ShouldNotifyRefreshFailure(phase, error)) notify("状態を確認できません", Ui.Failure(error), ToolTipIcon.Warning);
+    }
+    internal static bool ShouldNotifyRefreshFailure(ResidentPhase phase, Exception error) =>
+        error is not ControlBusyException || phase is not (ResidentPhase.Stopping or ResidentPhase.Exiting);
     private void BeginDisplayChange()
     {
         sessionStoppedClean = false;
@@ -367,6 +376,7 @@ internal sealed class ResidentContext : ApplicationContext
     private void SetPhase(ResidentPhase value)
     {
         Phase = value;
+        UpdateUpdateMenu();
         pause.Text = value switch
         {
             ResidentPhase.Stopped => "再開",
@@ -386,12 +396,15 @@ internal sealed class ResidentContext : ApplicationContext
         tray.Text = TrayPresentation.Tooltip(Snapshot, Config, Starting);
         settingsForm?.UpdateSnapshot(Snapshot, Config);
     }
-    public void Notify(string title, string text, ToolTipIcon icon, string? notificationKey = null)
+    public bool Notify(string title, string text, ToolTipIcon icon, string? notificationKey = null)
     {
-        if (!disposed && throttle.Allow(notificationKey ?? title + "\n" + text, DateTimeOffset.UtcNow)) tray.ShowBalloonTip(8000, title, text, icon);
+        if (disposed || !throttle.Allow(notificationKey ?? title + "\n" + text, DateTimeOffset.UtcNow)) return false;
+        tray.ShowBalloonTip(8000, title, text, icon);
+        return true;
     }
     private SessionEndDecision QuerySessionEnd()
     {
+        CancelPendingUpdate();
         sessionRequested = true;
         SessionEndDecision decision = SessionEndPolicy.Decide(Snapshot.ActiveConfig ?? Config, Snapshot.Status,
             sessionStoppedClean, !configurationKnown || displayChanges > 0 ||
@@ -436,6 +449,7 @@ internal sealed class ResidentContext : ApplicationContext
     }
     private void SessionEndChanged(bool ending)
     {
+        CancelPendingUpdate();
         sessionRequested = false;
         if (ending)
         {
@@ -451,6 +465,7 @@ internal sealed class ResidentContext : ApplicationContext
         shouldExit |= Phase == ResidentPhase.ExitFailed;
         if (Waiting)
         {
+            if (!shouldExit) CancelPendingUpdate();
             await RestoreSupervisionAsync(shouldExit ? ResidentPhase.WaitingToExit : ResidentPhase.Watching, shouldExit);
             return;
         }
@@ -470,7 +485,7 @@ internal sealed class ResidentContext : ApplicationContext
         {
             if (Phase != stopping || disposed || cancellation.IsCancellationRequested) return;
             long? count = refusal.UploadsQueued is { } queued && refusal.UploadsInProgress is { } uploading ? queued + uploading : null;
-            using var choice = new StopChoiceForm(count, shouldExit, refusal.Message);
+            using var choice = new StopChoiceForm(count, shouldExit, refusal.Message, allowForce: pendingUpdate is null);
             choice.ShowDialog();
             if (Phase != stopping || disposed || cancellation.IsCancellationRequested) return;
             if (choice.Choice == StopChoice.Force)
@@ -479,20 +494,25 @@ internal sealed class ResidentContext : ApplicationContext
                 catch (Exception e) { ReportStopFailure(shouldExit, e, shouldExit ? ResidentPhase.Exiting : ResidentPhase.Stopping); }
             }
             else if (supervisor is not { IsCompleted: false })
-                await RestoreSupervisionAsync(ResidentPhase.Watching, shouldExit);
+            {
+                bool canceledUpdate = choice.Choice == StopChoice.Cancel && updateStopRequested;
+                CancelPendingUpdate(keepStopRequest: choice.Choice != StopChoice.Cancel);
+                await RestoreSupervisionAsync(ResidentPhase.Watching, shouldExit && !canceledUpdate);
+            }
             else if (choice.Choice == StopChoice.Wait)
             {
                 SetPhase(shouldExit ? ResidentPhase.WaitingToExit : ResidentPhase.WaitingToPause);
                 Notify("アップロードが終わるまで待ちます", count is { } n ? TrayPresentation.StopWaiting(n) : "アップロード待ちを確認できるまで停止しません。", ToolTipIcon.Info);
                 poll.Interval = 5000;
             }
-            else SetPhase(ResidentPhase.Watching);
+            else { CancelPendingUpdate(); SetPhase(ResidentPhase.Watching); }
         }
         catch (Exception e) { ReportStopFailure(shouldExit, e, shouldExit ? ResidentPhase.Exiting : ResidentPhase.Stopping); }
     }
     private void ReportStopFailure(bool shouldExit, Exception error, ResidentPhase expected)
     {
         if (Phase != expected || disposed || cancellation.IsCancellationRequested) return;
+        CancelPendingUpdate();
         SetPhase(shouldExit ? ResidentPhase.ExitFailed : ResidentPhase.StopFailed);
         Notify("停止できません", Ui.Failure(error), ToolTipIcon.Error);
     }
@@ -502,6 +522,7 @@ internal sealed class ResidentContext : ApplicationContext
         // No await separates this check from restoring a live supervisory phase.
         if (disposed || cancellation.IsCancellationRequested) return;
         if (supervisor is { IsCompleted: false }) { SetPhase(target); return; }
+        CancelPendingUpdate(keepStopRequest: true);
         SetPhase(shouldExit ? ResidentPhase.Exiting : ResidentPhase.Stopping);
         ResidentPhase checking = Phase;
         Task<int>? ended = supervisor;
@@ -522,6 +543,7 @@ internal sealed class ResidentContext : ApplicationContext
     }
     private void ExplainOtherActivity()
     {
+        CancelPendingUpdate(keepStopRequest: true);
         const string message = "このトレイの監視は停止済みです。別のプロセスによる動作または起動準備の記録が残っています。状態を確認してください。";
         startupError = startupError is null ? message : startupError + "\n" + message;
         Snapshot = Snapshot with { Error = startupError };
@@ -529,9 +551,14 @@ internal sealed class ResidentContext : ApplicationContext
     }
     private async Task StopMountAsync(bool force, ResidentPhase previous, bool ownGenerationOnly = false)
     {
+        updateStopAuthorized = false;
+        if (force) CancelPendingUpdate();
         Task? pendingStartup = previous is ResidentPhase.Initializing or ResidentPhase.Starting ? mountStartup : null;
         Task? pendingInitialization = previous is ResidentPhase.Initializing or ResidentPhase.Starting ? initialization : null;
         Task<int>? ownedWatch = supervisor;
+        bool hadLiveWatch = ownedWatch is { IsCompleted: false };
+        SupervisionOwnership? ownedGeneration = supervisionOwnership;
+        bool rememberPause = pendingUpdate is null && !force && hadLiveWatch;
         Task? observation = supervisorObservation;
         CancellationTokenSource? watching = supervisionCancellation;
         CancellationTokenSource? preparing = preparationCancellation;
@@ -540,7 +567,17 @@ internal sealed class ResidentContext : ApplicationContext
             initializationCancellation.Cancel();
             preparing?.Cancel();
         }
-        if (ownGenerationOnly)
+        if (pendingUpdate is not null && !force)
+        {
+            SupervisionOwnership? ownership = supervisionOwnership;
+            var proof = await Task.Run(() => StopWithUpdateProof(ownGenerationOnly, ownership, ownedWatch, previous));
+            updateStopAuthorized = proof.Clean;
+            if (!proof.Clean) CancelPendingUpdate(keepStopRequest: true);
+            if (proof.Other) ExplainOtherActivity();
+            if (proof.Stop?.PreparationCancellationRequested == true)
+                Notify("起動の準備を止めます", proof.Stop.Message!, ToolTipIcon.Info);
+        }
+        else if (ownGenerationOnly)
         {
             if (await Task.Run(() => Controller.ReconcileSupervision(supervisionOwnership,
                 supervisorEnded: ownedWatch is not { IsCompleted: false }))) ExplainOtherActivity();
@@ -556,6 +593,8 @@ internal sealed class ResidentContext : ApplicationContext
         if (pendingStartup is not null) await pendingStartup;
         if (pendingInitialization is not null) await pendingInitialization;
         if (observation is not null) await observation;
+        if (rememberPause) await Task.Run(() => RememberCleanPause(ownedGeneration));
+        if (pendingUpdate is not null && updateStopAuthorized && !await Task.Run(UpdateStopStillClean)) CancelPendingUpdate(keepStopRequest: true);
         if (ReferenceEquals(supervisor, ownedWatch)) { supervisor = null; supervisionOwnership = null; }
         if (ReferenceEquals(supervisorObservation, observation)) supervisorObservation = null;
     }
@@ -570,6 +609,7 @@ internal sealed class ResidentContext : ApplicationContext
         if (Phase != stopping || disposed || cancellation.IsCancellationRequested) return;
         if (shouldExit)
         {
+            if (!LaunchPendingUpdate()) { await RefreshAsync(); return; }
             SetPhase(ResidentPhase.Exiting); poll.Stop(); cancellation.Cancel();
             foreach (Form form in windows.ToArray()) form.Close();
             tray.Visible = false; ExitThread();
@@ -578,6 +618,7 @@ internal sealed class ResidentContext : ApplicationContext
     }
     public Task ShutdownOwnedAsync()
     {
+        CancelPendingUpdate();
         ResidentPhase previous = Phase;
         SetPhase(ResidentPhase.Exiting);
         return CompleteStopAsync(true, true, previous);
@@ -670,8 +711,10 @@ internal sealed class ResidentContext : ApplicationContext
     }
     public SettingsForm CreateSettingsForm()
     {
-        var form = new SettingsForm(Config, new RegistrationService(options.RegistryRoot),
-            Environment.ProcessPath!, options, ApplyConfigAsync,
+        SettingsForm? form = null;
+        form = new SettingsForm(Config, new RegistrationService(options.RegistryRoot),
+            Environment.ProcessPath, options,
+            update => form!.AutoStartChanged ? ApplyConfigAsync(update) : ApplySettingsAsync(update),
             () => ShowSetupAsync(startAtLogin: true), LogoutAsync, SetWriteAccessAsync);
         form.UpdateSnapshot(Snapshot, Config);
         return form;
@@ -794,6 +837,7 @@ internal sealed class ResidentContext : ApplicationContext
     {
         if (disposing && !disposed)
         {
+            CancelPendingUpdate(); updateTimer.Dispose();
             disposed = true; poll.Dispose(); initializationCancellation.Cancel(); preparationCancellation?.Cancel(); supervisionCancellation?.Cancel();
             initializationCancellation.Dispose(); cancellation.Cancel(); cancellation.Dispose();
             tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose();

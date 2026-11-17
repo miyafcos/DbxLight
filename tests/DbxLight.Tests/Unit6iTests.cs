@@ -60,7 +60,7 @@ internal static partial class Unit6iTests
                 {
                     ran = true;
                     try { await scenario(c); }
-                    catch (Exception e) { failure = e; }
+                    catch (Exception e) { failure ??= e; }
                     finally
                     {
                         try { await c.ShutdownOwnedAsync(); }
@@ -72,7 +72,20 @@ internal static partial class Unit6iTests
                 configure?.Invoke(context, () => Execute(context));
                 using var guard = new System.Windows.Forms.Timer { Interval = 60000 };
                 guard.Tick += (_, _) => { failure ??= new TimeoutException("Tray checkpoint scenario hung."); context.ExitThread(); };
-                guard.Start(); Application.Run(context);
+                var dialogs = new HashSet<StopChoiceForm>();
+                EventHandler observeDialogs = (_, _) =>
+                {
+                    foreach (var dialog in Application.OpenForms.OfType<StopChoiceForm>().ToArray())
+                    {
+                        if (!dialogs.Add(dialog)) continue;
+                        TestTimeline.Dialog(f.Root, dialog, "dialog-opened");
+                        dialog.FormClosing += (_, args) => TestTimeline.Dialog(f.Root, dialog, "dialog-closing", new { reason = args.CloseReason.ToString(), args.Cancel });
+                        dialog.FormClosed += (_, args) => TestTimeline.Dialog(f.Root, dialog, "dialog-closed", new { reason = args.CloseReason.ToString() });
+                    }
+                };
+                Application.Idle += observeDialogs;
+                try { guard.Start(); Application.Run(context); }
+                finally { Application.Idle -= observeDialogs; }
             }
             catch (Exception e) { failure ??= e; }
         });

@@ -16,6 +16,7 @@ public sealed partial class MountController
     internal static readonly TimeSpan RecoveryFreshnessLimit = TimeSpan.FromSeconds(30);
     internal const int RecoveryFreshnessRetries = 3;
     internal TimeSpan? RecoveryFreshnessTestLimit { get; set; }
+    internal Func<double>? RecoveryComparisonAgeTestOverride { get; set; }
     internal Action<string, int>? RecoveryComparisonCheckpoint { get; set; }
     internal Action<string, string>? RecoveryNameCheckpoint { get; set; }
     private const string ComparisonLimitReason = "数が多い・遅いので、自動ではアップロードしません";

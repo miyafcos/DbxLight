@@ -11,7 +11,7 @@ internal static class Program
     {
         string root = AppContext.BaseDirectory;
         string scenario = File.Exists(Path.Combine(root, "scenario.txt")) ? File.ReadAllText(Path.Combine(root, "scenario.txt")).Trim() : "success";
-        if (args.Contains("--fake-child")) { Thread.Sleep(TimeSpan.FromMinutes(6)); return 0; }
+        if (args.Length == 1 && args[0] == "--fake-child") { Thread.Sleep(TimeSpan.FromMinutes(6)); return 0; }
         string records = Path.Combine(root, "calls.jsonl");
         using Process self = Process.GetCurrentProcess();
         File.AppendAllText(records, JsonSerializer.Serialize(new { pid = Environment.ProcessId, startedUtc = self.StartTime.ToUniversalTime(), args }) + "\n", new UTF8Encoding(false));
@@ -33,6 +33,27 @@ internal static class Program
             Console.Error.WriteLine(Marker);
             Console.WriteLine(args[0] == "version" ? "rclone v1.74.3" : "{" + (char)34 + Marker + (char)34 + ":");
             return 0;
+        }
+        if (scenario.StartsWith("snapshot", StringComparison.Ordinal))
+        {
+            if (args[0] == "config" && args.Length > 1 && args[1] == "file")
+            {
+                Console.WriteLine(Path.Combine(root, "snapshot.conf")); return 0;
+            }
+            if (args[0] == "about")
+            {
+                var expected = new List<string> { "about", "sample:/", "--json", "--contimeout", "5s", "--timeout", "10s",
+                    "--retries", "1", "--low-level-retries", "1" };
+                if (config is not null) { expected.Add("--config"); expected.Add(Path.Combine(root, "snapshot.conf")); }
+                expected.AddRange(["--ask-password=false", "--ftp-ask-password=false", "--sftp-ask-password=false"]);
+                if (!args.SequenceEqual(expected, StringComparer.Ordinal)) return 93;
+                Console.WriteLine(Marker); Console.Error.WriteLine(Marker);
+                if (scenario == "snapshot-wait") { Thread.Sleep(30000); return 0; }
+                string selected = config ?? Path.Combine(root, "snapshot.conf");
+                File.WriteAllText(selected, File.ReadAllText(selected).Replace("2000-01-01", "2099-01-01"), new UTF8Encoding(false));
+                return 0;
+            }
+            return 92;
         }
         if (args[0] == "listremotes")
         {

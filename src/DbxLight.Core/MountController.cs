@@ -45,6 +45,13 @@ public sealed partial class MountController
     internal Action<string>? PreparationCompletionCheckpoint { get; set; }
     internal Action<string>? PreparationCancellationCheckpoint { get; set; }
     internal Action? OwnedStopGateCheckpoint { get; set; }
+    internal double? StopWaitTestScale { get; set; }
+    internal Action<int>? StopWaitCheckpoint { get; set; }
+    // Bounded waits total 41s: stats 3 + quit 3 + exit 25 + mount release 10.
+    // This excludes the stopped-cache scan and records, and any work under the same gate
+    // (connection-change reads, settings application and restart). A 45s waiter can receive busy.
+    internal const int NormalStopWaitMilliseconds = 25000;
+    internal const int ForcedStopWaitMilliseconds = 10000;
     internal Func<string, RemoteInfo, RecoveryFolder>? RecoveryFolderTestOverride { get; set; }
     private RemoteInfo RecoveryInfo(RecoveryRemoteProbe probe)
     {
@@ -107,12 +114,13 @@ public sealed partial class MountController
         });
     }
 
+    internal static readonly TimeSpan ReadControlWait = TimeSpan.FromSeconds(2);
     public DbxStatus Status() => ReadRuntime().Status;
     public (DbxStatus Status, RuntimeState? Runtime) ReadRuntime() => ReadRuntimeCore(requireMatchingConfig: false);
     internal (DbxStatus Status, RuntimeState? Runtime) ReadAgentRuntime() => ReadRuntimeCore(requireMatchingConfig: true);
     private (DbxStatus Status, RuntimeState? Runtime) ReadRuntimeCore(bool requireMatchingConfig)
     {
-        if (ControlGate.TryExecute(() => ReadRuntimeLocked(requireMatchingConfig), TimeSpan.FromSeconds(2), out var result)) return result;
+        if (ControlGate.TryExecute(() => ReadRuntimeLocked(requireMatchingConfig), ReadControlWait, out var result)) return result;
         var progress = StartupPreparation.Read(State.PathName, Config.PathName);
         if (progress is not null) return (new DbxStatus { Preparation = progress.Progress, RescueCountsKnown = false,
             ReadOnlySource = "unknown", OldestQueuedAgeReason = "起動の準備中です。" }, null);
@@ -684,7 +692,7 @@ public sealed partial class MountController
                     {
                         StartupCheckpoint?.Invoke("before-resume", state);
                         preparation.CheckCancellation();
-                        comparisonAge = batch.AgeSeconds;
+                        comparisonAge = RecoveryComparisonAgeTestOverride?.Invoke() ?? batch.AgeSeconds;
                         if (batch.Items.Length > 0 && comparisonAge > (RecoveryFreshnessTestLimit ?? RecoveryFreshnessLimit).TotalSeconds)
                             throw new RecoveryFreshnessExpiredException();
                         // This is the final callback before ResumeThread; no filesystem work follows.
@@ -819,7 +827,7 @@ public sealed partial class MountController
                 catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException or KeyNotFoundException or InvalidDataException)
                 { throw new PendingUploadsException("Stop refused: upload state is unknown (" + StartupFailure.PublicMessage(e) + ")."); }
             }
-            TerminateOwned(state, allowKill: force, process, rc);
+            TerminateOwned(state, allowKill: force, process, rc, StopWaitTestScale, StopWaitCheckpoint);
         }
         catch
         {
@@ -845,7 +853,7 @@ public sealed partial class MountController
         return new(true, state.RclonePid);
     }
 
-    private static void TerminateOwned(RuntimeState state, bool allowKill, Process? existingProcess = null, RcClient? existingRc = null)
+    private static void TerminateOwned(RuntimeState state, bool allowKill, Process? existingProcess = null, RcClient? existingRc = null, double? stopWaitTestScale = null, Action<int>? stopWaitCheckpoint = null)
     {
         using var openedProcess = existingProcess is null ? ProcessIdentity.Open(state) : null;
         Process? process = existingProcess ?? openedProcess;
@@ -857,7 +865,9 @@ public sealed partial class MountController
         {
             if (!allowKill) throw new IOException("core/quit failed; process was left running.", e);
         }
-        if (!process.WaitForExit(10000))
+        int waitMilliseconds = checked((int)((allowKill ? ForcedStopWaitMilliseconds : NormalStopWaitMilliseconds) * (stopWaitTestScale ?? 1)));
+        stopWaitCheckpoint?.Invoke(waitMilliseconds);
+        if (!process.WaitForExit(waitMilliseconds))
         {
             if (!allowKill) throw new TimeoutException("rclone did not stop; process was left running.");
             using var owned = ProcessIdentity.Open(state);

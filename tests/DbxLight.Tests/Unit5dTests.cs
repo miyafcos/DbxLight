@@ -4,6 +4,7 @@ internal static partial class Unit5dTests
 {
     internal static void Run(TestRunner runner, string? only = null, bool includeMounts = true)
     {
+        if (only == "1-failure") { runner.Test("S1: deadline preserves confirmed results when an unconsumed read fails", TimedReadFailure); return; }
         if (only is null || only == "1")
         {
             runner.Test("S1: time-limit validation and atomic one-folder commands retain their contracts", TimeLimitOptions);

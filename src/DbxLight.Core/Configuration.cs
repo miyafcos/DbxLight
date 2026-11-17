@@ -44,6 +44,7 @@ public sealed record DbxConfig
     public int DownloadFileThreshold { get; init; } = 100;
     public long DownloadByteThreshold { get; init; } = 2000000000;
     public int RcPort { get; init; } = 5601;
+    public bool UpdateCheck { get; init; } = true;
     public string LogDir { get; init; } = Path.Combine(LocalRoot, "logs");
     public TestOverrides? TestOverrides { get; init; }
 
@@ -213,7 +214,7 @@ public sealed class ConfigStore
         else if (leaf is "downloadWindowSeconds" or "downloadFileThreshold") target[leaf] = int.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
         else if (leaf == "downloadByteThreshold") target[leaf] = long.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
         else if (leaf == "rcPort") target[leaf] = int.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
-        else if (leaf == "networkMode") target[leaf] = bool.Parse(value);
+        else if (leaf is "networkMode" or "updateCheck") target[leaf] = bool.Parse(value);
         else if (leaf == "testOverrides") throw new ArgumentException("Use testOverrides.writeBack, cachePollInterval or cacheMaxAgeOverride.");
         else target[leaf] = value == "null" && leaf is "rcloneConfigPath" or "writeBack" or "cachePollInterval" or "cacheMaxAgeOverride" ? null : JsonValue.Create(value);
         return node.Deserialize<DbxConfig>(JsonFiles.Options)!.Validate();

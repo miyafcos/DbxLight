@@ -8,6 +8,8 @@ internal static partial class Unit6eTests
 {
     internal static void Run(TestRunner runner, string? issue = null)
     {
+        if (issue == "E2-age") { runner.Test("E2: the oldest mixed comparison timestamp determines AgeSeconds", OldestComparisonAge); return; }
+        if (issue == "E2-real-age") { runner.Test("E2: real batch age refuses stale timestamps without an age override", RealComparisonAge); return; }
         void Test(string id, string name, Action action)
         { if (issue is null || issue == id) runner.Test(id + ": " + name, action); }
         Test("E1", "a body move interrupted before metadata resumes without losing either file", InterruptedPreservation);

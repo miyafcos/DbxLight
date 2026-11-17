@@ -5,6 +5,63 @@ namespace DbxLight.Cli;
 
 internal static class AgentCommands
 {
+    internal static int RunSnapshot(string? configPath, string[] args, bool json, string? statePath = null)
+    {
+        var failure = new SnapshotResult();
+        try
+        {
+            if (!json || args.Length == 0) throw new SnapshotException(2, "usage");
+            string command = args[0];
+            var options = new CommandOptions(args.Skip(1).ToArray());
+            double Decimal(string name, double fallback) => options.Value(name) is { } value
+                ? double.Parse(value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture) : fallback;
+            double rps = Decimal("--max-rps", 4);
+            double deadline = Decimal("--deadline-seconds", 600);
+            SnapshotRequest request;
+            switch (command)
+            {
+                case "list":
+                    string? entries = options.Value("--entries"), cursorOut = options.Value("--cursor-out");
+                    string? cursorFile = options.Value("--cursor-file");
+                    int limit = options.Number("--limit") ?? 2000;
+                    request = new(command, Folder: options.One(), Entries: entries, CursorOut: cursorOut,
+                        CursorFile: cursorFile, Limit: limit, MaxRps: rps, DeadlineSeconds: deadline);
+                    break;
+                case "metadata":
+                    request = new(command, PathsFile: options.Value("--paths-file"), Output: options.Value("--output"),
+                        MaxRps: rps, DeadlineSeconds: deadline);
+                    if (options.Rest().Length != 0) throw new SnapshotException(2, "usage");
+                    break;
+                case "fetch":
+                    request = new(command, Plan: options.Value("--plan"), Store: options.Value("--store"),
+                        Parallel: options.Number("--parallel") ?? 4, MaxRps: rps, DeadlineSeconds: deadline, Failures: options.Value("--failures"));
+                    if (options.Rest().Length != 0) throw new SnapshotException(2, "usage");
+                    break;
+                default: throw new SnapshotException(2, "usage");
+            }
+            DbxConfig config = DropboxSnapshotReader.ReadConfiguration(configPath);
+            using var cancelled = new CancellationTokenSource();
+            ConsoleCancelEventHandler handler = (_, e) => { e.Cancel = true; cancelled.Cancel(); };
+            Console.CancelKeyPress += handler;
+            try
+            {
+                SnapshotResult result = DropboxSnapshotReader.RunAsync(config, request, cancelled.Token,
+                    progress: Console.Error.WriteLine, configPath: configPath, statePath: statePath).GetAwaiter().GetResult();
+                Program.WriteJson(result);
+                return result.ExitCode;
+            }
+            finally { Console.CancelKeyPress -= handler; }
+        }
+        catch (SnapshotException e) { failure.Code = e.Code; failure.ExitCode = e.ExitCode; }
+        catch (Exception e) when (e is ArgumentException or FormatException or OverflowException)
+        { failure.Code = "usage"; failure.ExitCode = 2; }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        { failure.Code = "internal_error"; failure.ExitCode = 1; }
+        failure.ObservedThroughUtc = DateTimeOffset.UtcNow;
+        Program.WriteJson(failure);
+        return failure.ExitCode;
+    }
+
     internal static bool IsCommand(string command) => command is "ls" or "wait" or "refresh" or "agent-guide" or "stat" or "find" or "resolve";
 
     internal static int Run(MountController controller, string command, string[] args, bool json)
@@ -98,6 +155,8 @@ internal static class AgentCommands
                 foreach (AgentUploadItem item in outcome.Result.Items) Console.WriteLine($"{item.State}\t{item.Path}\t{item.Message}");
                 (outcome.ExitCode == 0 ? Console.Out : Console.Error).WriteLine(outcome.Result.Message);
                 Console.WriteLine(outcome.Result.RescueScope);
+                if (outcome.Result.RemnantCount > 0)
+                    Console.WriteLine($"{outcome.Result.RemnantCount}: {outcome.Result.RemnantMessage}");
             }
             return outcome.ExitCode;
         }

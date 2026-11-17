@@ -389,8 +389,19 @@ internal static partial class Unit6iTests
             {
                 if (chose || Application.OpenForms.OfType<StopChoiceForm>().FirstOrDefault() is not { } dialog) return;
                 chose = true;
+                // Keep modal input out until the asynchronous watch-end injection has finished.
+                IEnumerable<Control> Descendants(Control parent)
+                {
+                    foreach (Control child in parent.Controls)
+                    { yield return child; foreach (Control nested in Descendants(child)) yield return nested; }
+                }
+                foreach (var button in Descendants(dialog).OfType<Button>()) button.Enabled = false;
+                dialog.ControlBox = false;
                 try
                 {
+                    TestTimeline.Dialog(f.Root, dialog, "dialog-injection-held");
+                    ((Button)dialog.AcceptButton!).PerformClick();
+                    TestRunner.Assert(dialog.Visible && dialog.Choice == StopChoice.Cancel, "Premature modal choice was accepted.");
                     if (external)
                     {
                         await Task.Run(() => { DrainPending(f); f.Controller.Stop(); });
@@ -420,8 +431,10 @@ internal static partial class Unit6iTests
                 catch (Exception e) { injection = e; }
                 finally
                 {
-                    if (wait) ((Button)dialog.AcceptButton!).PerformClick();
-                    else ((Button)dialog.CancelButton!).PerformClick();
+                    TestTimeline.Dialog(f.Root, dialog, "dialog-test-choice", new { external, wait, exit });
+                    var selected = (Button)(wait ? dialog.AcceptButton! : dialog.CancelButton!);
+                    selected.Enabled = true;
+                    selected.PerformClick();
                 }
             };
             Application.Idle += choose;

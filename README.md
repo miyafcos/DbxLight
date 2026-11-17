@@ -34,10 +34,11 @@ Dropbox のフォルダを、エクスプローラーにドライブ (たとえ�
 - **状態が見える**: アップロード待ちの件数とファイル名、失敗したファイルを状態画面で確認できます。トレイアイコンは現在の状態 (稼働・アップロード中・注意・失敗または停止・準備中) を示します。
 - **Web で開く**: 右クリックメニューの「Web で開く」から、そのファイルやフォルダを Dropbox の Web 画面で開けます。
 - **AI ツールから使いやすい**: ファイルの中身をダウンロードせずに検索する、状態を確認する、保存したファイルがアップロードされたかを確認する CLI コマンドがあります (後述)。
+- **新しいバージョンの確認と更新**: 1 日に 1 回、新しいバージョンが出ていないかを確認して知らせます。トレイメニューから、確認ダイアログを経て更新できます (下の「アップデート」を参照)。
 
 設定画面 (読み取り専用の状態):
 
-![設定画面 (ローカルに残す時間・キャッシュの上限・マウント先ドライブ・書き込みスイッチ)](docs/images/settings.png)
+![設定画面 (ローカルに残す時間・キャッシュの上限・マウント先ドライブ・書き込みスイッチ・新しいバージョンの自動の確認)](docs/images/settings.png)
 
 表示しないフォルダを選ぶ画面 (トレイメニューの「表示しないフォルダ」から開きます):
 
@@ -54,7 +55,7 @@ Dropbox のフォルダを、エクスプローラーにドライブ (たとえ�
 ## 必要な環境
 
 - **Windows 11 (64 ビット)**: Windows 10 では確かめていません。
-- **[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)**: 現時点では配布用の実行ファイルを用意していないため、ソースからビルドします。
+- **[.NET 8 デスクトップ ランタイム](https://dotnet.microsoft.com/download/dotnet/8.0)**: 配布用の zip には同梱していません (`winget install Microsoft.DotNet.DesktopRuntime.8`)。ソースからビルドするときは .NET 8 SDK を使います。
 - **rclone**: v1.74.3 だけで確かめています。バージョンを指定してインストールするなら `winget install Rclone.Rclone --version 1.74.3` を実行します。
 - **WinFsp**: 2.1 で確かめています (`winget install WinFsp.WinFsp`)。
 
@@ -62,18 +63,19 @@ DbxLight は rclone と WinFsp を同梱しません。不足しているツー�
 
 ## はじめかた
 
-1. このリポジトリをクローンしてビルドします。
+1. [Releases](https://github.com/miyafcos/DbxLight/releases) から `DbxLight-<バージョン>-win-x64.zip` をダウンロードし、自分のアカウントで書き込めるフォルダ (たとえば `%LOCALAPPDATA%\Programs\DbxLight`) に展開します。
 
-   ```powershell
-   git clone https://github.com/miyafcos/DbxLight.git
-   cd DbxLight
-   dotnet build DbxLight.sln -c Release
-   ```
+   展開すると、次の 2 つの実行ファイルが同じフォルダにできます。
 
-   ビルドすると次の 2 つの実行ファイルができます。
+   - 常駐アプリ: `DbxLight.exe`
+   - CLI コマンド: `dbxl.exe` (下の「AI ツール (Claude Code など) から使う」で使用します)
 
-   - 常駐アプリ: `src/DbxLight.Tray/bin/Release/net8.0-windows/DbxLight.exe`
-   - CLI コマンド: `src/DbxLight.Cli/bin/Release/net8.0-windows/dbxl.exe` (下の「AI ツール (Claude Code など) から使う」で使用します)
+   展開するときの注意は次のとおりです。
+
+   - **zip の確認**: Releases には zip と同じ名前の `.sha256` ファイルも置いてあります。`Get-FileHash <zip> -Algorithm SHA256` の結果と比べると、ダウンロードした zip が壊れていないかを確かめられます。
+   - **署名はありません**: 実行ファイルに署名を付けていないため、初回の起動時に Windows が確認の画面を出すことがあります。
+   - **置き場所**: `C:\Program Files` のように管理者の権限が要る場所に置くと、アプリからの更新 (下の「アップデート」) が使えません。
+   - **ソースからビルドする場合**: 下の「開発」を参照してください。
 
 2. `DbxLight.exe` を起動します。まだ設定が無いため、初回セットアップ画面 (タイトルは「ログインと接続先」) が開きます。
 3. 画面の順に進めます。
@@ -92,6 +94,19 @@ DbxLight は rclone と WinFsp を同梱しません。不足しているツー�
 
 - **既存の rclone リモートを使う場合**: すでに rclone で Dropbox のリモートを作成してある場合は、初回セットアップ画面のステップ 2 (Dropbox にログイン) で「すでにある rclone のリモートを使う」を選べます。
 - **認証情報の保存先と再ログイン**: ブラウザでログインしたときの認証情報は、アプリ専用の rclone 設定ファイル (`%APPDATA%\DbxLight\credentials-<設定ごとの識別>\rclone.conf`) に保存されます。本人だけが読める権限のフォルダに作成され、アプリが中身を画面やログに出すことはありません。既存の rclone リモートを使う場合は、認証情報はその rclone 設定ファイルに入ったままで、DbxLight は書き換えません。再ログインやログアウトは設定画面から行います。再ログインした後は、読み取り専用から始まります (前のアカウントの書き込み設定は引き継ぎません)。
+
+## アップデート
+
+- **確認**: 起動の 2 分後と、そのあと 24 時間ごとに、このリポジトリの Releases に新しいバージョンが出ていないかを確認します。見つかると、タスクトレイが 1 つのバージョンにつき 1 回だけ知らせます。トレイメニューの「更新を確認」で、いつでも手動で確認できます。
+- **更新**: 新しいバージョンがあると、トレイメニューに「バージョン ○ に更新」が出ます。選ぶと確認ダイアログが出て、「更新する」を押すと、マウントの停止、ファイルの入れ替え、新しいバージョンでの起動の順に進みます。マウントがきれいに停止したと確かめられないときは、入れ替えを始めず、停止したままにして知らせます。操作なしにアプリが勝手に入れ替えることはありません。
+- **アップロード待ちがあるとき**: 通常の終了と同じ扱いで、アップロードが終わるまで待ってから更新します。待ちを取り消すと、更新も取り消されます。
+- **検証**: ダウンロードした zip は、Releases に置かれた SHA-256 と、zip の中のファイル一覧 (`release.json`) の両方と照合します。一致しなければ何も入れ替えません。
+- **失敗したとき**: 入れ替えの途中で失敗すると、前のバージョンのファイルに戻して起動し直します。前のバージョンのファイルは、展開先の `backup` フォルダに新しい順で 2 つまで残ります。
+- **前のバージョンに戻す**: 常駐アプリを終了してから、手元に保管した zip を指定して `dbxl update apply --from <zip> --yes` を実行します。
+- **送信する情報**: 確認のときに GitHub へ送るのは、匿名の問い合わせだけです (アプリの名前とバージョンが User-Agent に入ります)。Dropbox のアカウントやファイルの情報は送りません。
+- **自動の確認を止める**: 設定画面の「新しいバージョンを自動で確認する」をオフにします (設定ファイルでは `updateCheck`)。
+- **使える条件**: アプリからの更新は、配布用の zip を展開して使っている場合だけ使えます。ソースからビルドした実行ファイルでは、確認まではできますが、入れ替えは行いません。rclone と WinFsp は更新しません。
+- **検証の限界**: SHA-256 の照合は、ダウンロード中の破損や差し替えを検出するためのものです。実行ファイルには署名が無く、配布元そのものが書き換えられた場合は検出できません。
 
 ## 知っておくこと
 
@@ -157,7 +172,7 @@ DbxLight は rclone と WinFsp を同梱しません。不足しているツー�
 
 コマンド `dbxl` に、AI ツールが安全に操作するための機能が用意されています。
 
-- `dbxl.exe` は、ビルドすると `src/DbxLight.Cli/bin/Release/net8.0-windows/` に生成されます。このフォルダを PATH に入れるか、フルパスで呼び出します。
+- `dbxl.exe` は、zip を展開したフォルダにあります (ソースからビルドした場合は `src/DbxLight.Cli/bin/Release/net8.0-windows/`)。このフォルダを PATH に入れるか、フルパスで呼び出します。
 - 設定ファイルの場所は、`--config`、環境変数 `DBXL_CONFIG`、`%APPDATA%\DbxLight\config.json` の順に探します (状態ファイルは `--state`、`DBXL_STATE`、`%LOCALAPPDATA%\DbxLight\state.json` の順)。常駐アプリを既定の設定で使っていれば、オプションなしで呼び出せます。
 - どのコマンドも、`--json` を付けると、成功でも失敗でも JSON を 1 つ返します。
 
@@ -173,11 +188,13 @@ DbxLight は rclone と WinFsp を同梱しません。不足しているツー�
 | `dbxl refresh <フォルダ>` | フォルダ一覧を再取得する |
 | `dbxl resolve <パスか URL>` | ローカルのパス・Dropbox 上の相対パス・Web の URL を相互に変換する |
 | `dbxl agent-guide` | 現在の設定に合わせた AI ツール向けのガイドを出力する |
+| `dbxl version` | 使っている DbxLight のバージョンを出す |
+| `dbxl update check` | 新しいバージョンが出ているかを確認する (入れ替えは行わない) |
 
 - **`status` の判定**: 終了値だけで判断せず、JSON の `ok`・`running`・`ready`・`recoveryRequired`・`processUncertain`・`statusError` を読みます。null は「分からない」という意味であり、0 や「問題なし」ではありません。
 - **終了値 3 と `busy` の扱い**: 終了値 3 は「まだ」(完了していない・確認できていない) を示します。`code` が `busy` (別の DbxLight の操作の完了待ち) の場合は、何も確認できていません (その直前に見えていた失敗やアップロード待ちも結果には入りません)。数秒おいて同じコマンドを呼び直します。なお、`status --json` の `busy` は終了値 0 を返し、`ok=false`・`code=busy`・`message` (説明文) が入り、状態の項目 (`running` など) はすべて null になります。
 - **`recovery_required` の扱い**: `recovery_required` であっても、`running=true` かつ `processUncertain=false` のあいだは前回の停止からの未アップロードファイルを確認している最中であり、確認が終わると自動で解除されます (アップロードされずに退避されるファイルもあります。長く続くときは人に知らせます)。
-- **人の指示が必要な操作**: 停止・再接続・設定変更・強制操作・回復状態の解除は、AI ツールが人の指示なしに行わない決まりです (ガイドとテンプレートにも記載しています)。
+- **人の指示が必要な操作**: 停止・再接続・設定変更・強制操作・回復状態の解除・バージョンの更新 (`dbxl update apply`) は、AI ツールが人の指示なしに行わない決まりです (ガイドとテンプレートにも記載しています)。
 - **指示ファイルへの貼り付け**: `dbxl agent-guide` の出力を AI ツールの指示ファイル (`CLAUDE.md` や `AGENTS.md`) に貼ると、「フォルダを丸ごと読まない」「保存のあとは `wait` の終了値 0 を確かめる」といった使い方が伝わります。
 - **テンプレートと詳細仕様**: Claude Code の skill のテンプレートが `integrations/claude-code/SKILL.md` に、`AGENTS.md` 向けの文面が `integrations/AGENTS.snippet.md` にあります。全コマンドと終了値の詳細は [docs/cli.md](docs/cli.md) にあります。
 
@@ -205,6 +222,7 @@ DbxLight は rclone と WinFsp を同梱しません。不足しているツー�
 | `networkMode` | `true` | ネットワークドライブとしてマウントする |
 | `rcPort` | `5601` | rclone を操作するためのポート (この PC 内の `127.0.0.1` だけで開く) |
 | `downloadWindowSeconds` / `downloadFileThreshold` / `downloadByteThreshold` | `300` / `100` / `2000000000` | 指定秒数のあいだにダウンロードしたファイルが、指定件数または指定バイト数以上になったらタスクトレイで通知する |
+| `updateCheck` | `true` | 新しいバージョンが出ていないかを自動で確認する (起動の 2 分後と、そのあと 24 時間ごと) |
 
 このほかに、テスト用の `testOverrides` があります (普段は使いません)。
 
@@ -215,9 +233,11 @@ dotnet build DbxLight.sln -c Release
 dotnet run --project tests/DbxLight.Tests -c Release --no-build -- --all
 ```
 
-- C# / .NET 8 (WinForms) 製で、外部パッケージは使っていません。
+- C# / .NET 8 (WinForms) 製で、外部パッケージは使っていません。ビルドには [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) が必要です。
+- ビルドすると、常駐アプリが `src/DbxLight.Tray/bin/Release/net8.0-windows/DbxLight.exe` に、CLI コマンドが `src/DbxLight.Cli/bin/Release/net8.0-windows/dbxl.exe` にできます。ソースからビルドした実行ファイルでは、アプリからの更新 (入れ替え) は行いません。
 - テストは、ローカルのフォルダを接続先にして rclone を実際に動かします (Dropbox には接続しません)。rclone と WinFsp が必要で、空いているドライブ文字をいくつか使います (U: V: W: など)。
 - テストは、稼働中の DbxLight と同じ「他の操作の完了待ち」の仕組みを使います。常駐アプリを動かしたままテストを走らせると、常駐側のコマンドが `busy` を返したり、起動が遅れたりすることがあります。
+- 配布用の zip は `python tools/make_release.py --source . --out <空のフォルダ>` で作ります (Python 3.12 以降。標準ライブラリだけを使い、内部で `dotnet publish` を実行します)。zip と、同じ名前の `.sha256` ファイルができます。
 - 設計の判断は `docs/adr/` にあります。
 
 ## ライセンスと商標

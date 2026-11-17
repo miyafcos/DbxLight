@@ -129,6 +129,8 @@ internal static partial class Unit6hTests
     {
         using var f = new Unit5Fixture("u6h-stop-restart-" + cancelToken);
         using var cancel = new CancellationTokenSource();
+        var mounted = new TaskCompletionSource<RuntimeState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var observeExit = new ManualResetEventSlim();
         var owned = new List<RuntimeState>(); bool stopped = false; int resumes = 0;
         f.Controller.StartupCheckpoint = (stage, state) =>
         {
@@ -137,6 +139,13 @@ internal static partial class Unit6hTests
         };
         f.Controller.SupervisorCheckpoint = stage =>
         {
+            if (stage == "watch-started")
+            {
+                mounted.TrySetResult(owned.Single());
+                if (!observeExit.Wait(TimeSpan.FromSeconds(15)))
+                    throw new TimeoutException("Restart-wait test did not release the started watcher.");
+                return;
+            }
             if (stage != "restart-wait") return;
             if (cancelToken) cancel.Cancel(); else f.Controller.Stop();
             stopped = true;
@@ -144,16 +153,19 @@ internal static partial class Unit6hTests
         Task<int> run = Task.Run(() => f.Controller.Run(cancel.Token));
         try
         {
-            Unit5Fixture.Wait(() => f.Controller.Status().Ready, "Restart-wait mount missing.");
-            using (var child = ProcessIdentity.Open(f.State.Load()!)!)
+            // This checkpoint is after startup releases ControlGate. Do not poll Status
+            // while startup can legitimately report busy after its two-second read budget.
+            RuntimeState initial = mounted.Task.WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
+            using (var child = ProcessIdentity.Open(initial)!)
             { child.Kill(); TestRunner.Assert(child.WaitForExit(10000)); }
+            observeExit.Set();
             TestRunner.Assert(run.Wait(TimeSpan.FromSeconds(15)));
             TestRunner.Equal(0, run.Result); TestRunner.Assert(stopped); TestRunner.Equal(1, resumes);
             TestRunner.Assert(!f.Controller.Status().Running);
         }
         finally
         {
-            cancel.Cancel(); f.Controller.Stop(true); TestRunner.Assert(run.Wait(TimeSpan.FromSeconds(15)));
+            observeExit.Set(); cancel.Cancel(); f.Controller.Stop(true); TestRunner.Assert(run.Wait(TimeSpan.FromSeconds(15)));
             foreach (var state in owned) { using var child = ProcessIdentity.Open(state); TestRunner.Assert(child is null); }
         }
     }
