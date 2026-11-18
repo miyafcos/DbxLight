@@ -29,8 +29,7 @@ public static class RcloneArguments
         if (config.NetworkMode)
         {
             args.Add("--network-mode");
-            string identity = Path.GetFullPath(config.CacheDir) + "|" + MountPaths.CanonicalMount(config.MountPoint);
-            Add(args, "--volname", "DbxLight-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..12]);
+            Add(args, "--volname", NetworkVolumeName(config));
         }
         args.Add("--rc");
         Add(args, "--rc-addr", "127.0.0.1:" + config.RcPort);
@@ -46,6 +45,12 @@ public static class RcloneArguments
         if (config.TestOverrides?.WriteBack is { } writeBack) Add(args, "--vfs-write-back", writeBack);
         if (config.TestOverrides?.CachePollInterval is { } poll) Add(args, "--vfs-cache-poll-interval", poll);
         return args;
+    }
+
+    internal static string NetworkVolumeName(DbxConfig config)
+    {
+        string identity = Path.GetFullPath(config.CacheDir) + "|" + MountPaths.CanonicalMount(config.MountPoint);
+        return "DbxLight-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..12];
     }
 
     private static void Add(List<string> args, string key, string value) { args.Add(key); args.Add(value); }

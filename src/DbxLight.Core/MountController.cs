@@ -36,6 +36,7 @@ public sealed partial class MountController
     public TimeSpan StartupTimeout { get; }
     private readonly Func<RuntimeState, Process?> queryProcess;
     private StartupPreparation? preparation;
+    internal Func<RuntimeState, FolderMountObservation?>? FolderMountInspector { get; set; }
     internal TimeSpan? PreparationTimeTestLimit { get; set; }
     internal Func<TimeSpan>? PreparationElapsedTestOverride { get; set; }
     internal int? PreparationFolderTestLimit { get; set; }
@@ -196,6 +197,9 @@ public sealed partial class MountController
     {
         DbxConfig before = Config.Load();
         DbxConfig after = update(before).Validate();
+        bool connectionChanged = !DropboxCopyPaths.SameConnection(before, after);
+        if (connectionChanged && (after.CopyPathBinding is null || after.CopyPathBinding == before.CopyPathBinding))
+            after = DropboxCopyPaths.ClearBinding(after);
         RequireRescueDirectoryChange(before, after);
         if (!RecoveryDestination.Matches(before, after) || !before.WriteAllowedRemotes.SequenceEqual(after.WriteAllowedRemotes, StringComparer.Ordinal))
             EnsureConnectionChangeAllowed();
@@ -217,8 +221,21 @@ public sealed partial class MountController
         // A stop may discover additional pending work; never abandon that cache.
         EnsureRecoveryDestination(LoadRuntime(), after);
         Config.Save(after);
+        if (connectionChanged) DropboxCopyPaths.InvalidateCache(Config.PathName);
         if (running) StartLocked(SupervisorOwner(runtime), runtime?.RestartCount ?? 0);
         return after;
+    });
+
+    internal DbxConfig? TrySavePreferences(DbxConfig expected, DbxConfig next) => ControlGate.Execute<DbxConfig?>(() =>
+    {
+        RequireUnchanged(expected);
+        if (JsonSerializer.Serialize(expected with { UpdateCheck = next.UpdateCheck, CopyPathPrefix = next.CopyPathPrefix,
+            CopyPathBinding = next.CopyPathBinding }, JsonFiles.Options) != JsonSerializer.Serialize(next, JsonFiles.Options))
+            return null;
+        if (expected.UpdateCheck != next.UpdateCheck || expected.CopyPathPrefix != next.CopyPathPrefix ||
+            expected.CopyPathBinding != next.CopyPathBinding)
+            Config.Save(next);
+        return next;
     });
 
     // Credential changes must also refuse recovery when the destination text is unchanged.
@@ -609,6 +626,7 @@ public sealed partial class MountController
             }
             _ = PrepareCache(config, before);
             StartupCheckpoint?.Invoke("after-cache-preservation", before ?? new RuntimeState { ActiveConfig = config });
+            var dropboxCapture = FolderMountCredentialCapture.Begin(config, startupCancellation);
             string runtimeDir = Path.GetDirectoryName(State.PathName)!;
             string filterPath = Path.Combine(runtimeDir, "hidden-" + Path.GetFileNameWithoutExtension(State.PathName) + ".filter");
             WriteFilter(filterPath, HiddenFolders.Render(config.HiddenPaths, config.ExcludePatterns));
@@ -710,23 +728,38 @@ public sealed partial class MountController
                     while (timer.Elapsed < StartupTimeout)
                     {
                         if (child.HasExited) throw StartupFailure.RetryableChild(new InvalidOperationException($"rclone exited during startup ({child.ExitCode}); log: {logFile}"));
-                        JsonElement disk = default;
+                        JsonElement disk = default, stats = default;
                         bool ready = false;
                         try
                         {
                             if (StatusReader.Number(rc.Call("core/pid"), "pid") == child.Id &&
-                                rc.Call("vfs/stats").TryGetProperty("diskCache", out _) &&
+                                (stats = rc.Call("vfs/stats")).TryGetProperty("diskCache", out disk) &&
                                 Directory.Exists(MountPaths.CanonicalMount(config.MountPoint)))
-                            {
-                                disk = rc.Call("vfs/stats").GetProperty("diskCache");
                                 ready = true;
-                            }
                         }
                         catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException or InvalidDataException) { }
                         if (ready)
                         {
+                            string? device = null, dropboxBinding = null, dropboxCursor = null;
+                            // These observations are only needed for optional Dropbox operations.
+                            // Readiness was already proved by the mount and its RC process.
+                            try
+                            {
+                                device = FolderShareMount.Device(config.MountPoint);
+                                if (device is not null && dropboxCapture is not null &&
+                                    FolderShareMount.MatchesVfsRemote(config.Remote, DropboxFolderClient.Text(stats, "fs")))
+                                {
+                                    var binding = dropboxCapture.Confirm(FolderShareMount.RcloneConfigPath(rc), startupCancellation);
+                                    dropboxCursor = dropboxCapture.CursorFor(binding);
+                                    dropboxBinding = binding;
+                                }
+                            }
+                            catch (Exception) { }
                             state = state with
                             {
+                                MountDevice = device,
+                                MountDropboxBinding = dropboxBinding,
+                                MountDropboxCursor = dropboxCursor,
                                 CacheDataRoot = disk.TryGetProperty("path", out var dataPath) ? OrdinaryPath(dataPath.GetString()) : null,
                                 CacheMetadataRoot = disk.TryGetProperty("pathMeta", out var metaPath) ? OrdinaryPath(metaPath.GetString()) : null
                             };

@@ -23,6 +23,21 @@ internal static class Program
         try { _ = TestPaths.WorkRoot; }
         catch (IOException error) { Console.Error.WriteLine(error.Message); return 1; }
         Environment.SetEnvironmentVariable("DBXL_RESCUE_DIR", Path.Combine(UnitTests.RepositoryRoot(), "_test-work", "unit6a-rescue-default"));
+        if (args is ["--unit9"] or ["--unit9r3"] or ["--unit9r4"])
+        {
+            var focused = new TestRunner();
+            switch (args[0])
+            {
+                case "--unit9": Unit9Tests.Run(focused); break;
+                case "--unit9r3": Unit9Tests.Review3Tests(focused); break;
+                case "--unit9r4": Unit9Tests.Review4Tests(focused); break;
+            }
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 ? 0 : 1;
+        }
+        if (args is ["--unit9-renew-child", var renewConfig]) return Unit9Tests.RenewalChild(renewConfig);
+        if (args is ["--unit9-screens", var output]) return Unit9Tests.Screens(output);
+        if (args is ["--unit9-invite-child", .. var invite] && invite.Length >= 5) return Unit9Tests.InviteChild(invite);
         if (args.Length == 3 && args[0] == "--unit8-lock")
         {
             using var locked = new FileStream(args[1], FileMode.Open, FileAccess.Read, FileShare.None);
@@ -272,6 +287,7 @@ internal static class Program
         Unit6sTests.Run(runner);
         Unit7Tests.Run(runner);
         Unit8Tests.Run(runner);
+        Unit9Tests.Run(runner);
         Unit6s7rTests.Run(runner);
         Unit6s7rTests.RunReview2(runner);
         Unit6s7rTests.RunReview3(runner);

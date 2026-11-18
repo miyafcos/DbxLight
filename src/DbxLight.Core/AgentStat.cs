@@ -15,7 +15,7 @@ public sealed partial class AgentMetadata
 
     private AgentStatResult StatCore(string path)
     {
-        string relative = Relative(path); EnsureVisible(relative);
+        string relative = ResolveInput(path); EnsureVisible(relative);
         unsafeFolders.Clear();
         AgentEntry entry = MetadataStat(relative) ?? throw NotFound();
         UploadQueueEntry? pending = rc is null ? null : ReadUploadQueue().Find(q => PathKey(q.Path) == PathKey(relative));

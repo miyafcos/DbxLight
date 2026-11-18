@@ -253,19 +253,21 @@ internal sealed partial class ResidentContext
         }
         catch (Exception error) when (error is not OutOfMemoryException) { System.Diagnostics.Trace.WriteLine(error); }
     }
-    internal async Task ApplySettingsAsync(Func<DbxConfig, DbxConfig> update)
+    internal async Task ApplySettingsAsync(Func<DbxConfig, DbxConfig> update, bool allowPreferencesOnly = true)
     {
         if (Phase is not (ResidentPhase.Watching or ResidentPhase.Stopped))
             throw new InvalidOperationException("起動・停止・設定変更の処理が終わってから操作してください。");
-        var saved = await Task.Run(() => ControlGate.Execute(() =>
+        var expected = await Task.Run(Controller.Config.Load);
+        var next = await DropboxCopyPaths.BindSettingsAsync(expected, update(expected).Validate(), DropboxFolderClient.Open,
+            CancellationToken.None, mount: new FolderShareMount(Controller.Config.PathName, Controller.State.PathName));
+        var saved = allowPreferencesOnly ? await Task.Run(() => Controller.TrySavePreferences(expected, next)) : null;
+        if (saved is null)
         {
-            DbxConfig current = Controller.Config.Load(), next = update(current).Validate();
-            bool preferenceOnly = current.UpdateCheck != next.UpdateCheck &&
-                JsonSerializer.Serialize(current with { UpdateCheck = next.UpdateCheck }, JsonFiles.Options) == JsonSerializer.Serialize(next, JsonFiles.Options);
-            if (!preferenceOnly) return null;
-            Controller.Config.Save(next); return next;
-        }));
-        if (saved is null) { await ApplyConfigAsync(update); return; }
+            string serialized = JsonSerializer.Serialize(expected, JsonFiles.Options);
+            await ApplyConfigAsync(current => JsonSerializer.Serialize(current, JsonFiles.Options) == serialized ? next :
+                throw new InvalidOperationException("別の操作で設定が変わりました。この画面を開き直してください。"));
+            return;
+        }
         Config = saved; ScheduleUpdateCheck(); await RefreshAfterChangeAsync();
     }
 }

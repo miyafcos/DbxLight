@@ -8,6 +8,7 @@ public sealed class SettingsForm : DbxForm
     private readonly ComboBox retention = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox drive = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox remote = new(), cacheLimit = new(), cacheDir = new();
+    private readonly TextBox copyPathPrefix = new() { PlaceholderText = "空欄で自動", Name = "copyPathPrefix" };
     private readonly CheckBox autoStart = new() { Text = "Windows の起動時に始める", AutoSize = true };
     private readonly CheckBox updateCheck = new() { Text = "新しいバージョンを自動で確認する", AutoSize = true };
     private string? noticeMount;
@@ -47,7 +48,7 @@ public sealed class SettingsForm : DbxForm
         column.Controls.Add(permission, 0, 0);
         column.Controls.Add(explanation, 0, 1);
         column.Controls.Add(Ui.Label("remote を変えても、書き込みを許すリモートの一覧になければ読み取り専用です。"), 0, 2);
-        var fields = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8, Margin = Padding.Empty };
+        var fields = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 9, Margin = Padding.Empty };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         retention.Items.AddRange(["30 分", "1 時間", "3 時間", "1 日", "1 週間"]);
@@ -56,10 +57,15 @@ public sealed class SettingsForm : DbxForm
         if (!drive.Items.Contains(config.MountPoint)) drive.Items.Add(config.MountPoint);
         drive.SelectedItem = config.MountPoint;
         remote.Text = config.Remote; cacheLimit.Text = config.CacheMaxSize; cacheDir.Text = config.CacheDir;
+        copyPathPrefix.Text = DisplayPrefix(config);
+        remote.TextChanged += (_, _) =>
+        {
+            if (remote.Text.Trim() != currentConfig.Remote) copyPathPrefix.Clear();
+        };
         (string Title, Control Input)[] rows =
         [
             ("接続先 (remote)", remote), ("ローカルに残す時間", retention), ("キャッシュの上限 (例: 5G)", cacheLimit),
-            ("キャッシュの保存先", cacheDir), ("マウント先", drive), ("自動起動", autoStart),
+            ("キャッシュの保存先", cacheDir), ("マウント先", drive), ("コピーするパスの頭", copyPathPrefix), ("自動起動", autoStart),
             ("更新", updateCheck), ("バージョン", Ui.Label("バージョン " + UpdateVersion.Current))
         ];
         for (int i = 0; i < rows.Length; i++)
@@ -85,7 +91,7 @@ public sealed class SettingsForm : DbxForm
                 "マウントを止めて、接続先から外します。専用のログインで使った認証情報も消します。",
                 "ログアウト", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             signOut.Enabled = loginAgain.Enabled = apply.Enabled = false;
-            try { await logout(); remote.Text = ""; result.Text = "ログアウトしました。"; }
+            try { await logout(); remote.Text = ""; copyPathPrefix.Clear(); result.Text = "ログアウトしました。"; }
             catch (Exception e) { if (!IsDisposed) result.Text = Ui.Failure(e).ReplaceLineEndings(Environment.NewLine); }
             finally { if (!IsDisposed) { signOut.Enabled = true; loginAgain.Enabled = reauthenticate is not null; apply.Enabled = true; } }
         };
@@ -103,7 +109,13 @@ public sealed class SettingsForm : DbxForm
     public void UpdateSnapshot(TraySnapshot snapshot, DbxConfig config)
     {
         if (IsDisposed) return;
+        bool changedConnection = !DropboxCopyPaths.SameConnection(currentConfig, config);
+        if (changedConnection || currentConfig.CopyPathBinding != config.CopyPathBinding || currentConfig.CopyPathPrefix != config.CopyPathPrefix)
+        {
+            copyPathPrefix.Text = DisplayPrefix(config);
+        }
         currentConfig = config;
+        if (changedConnection) remote.Text = config.Remote;
         DbxConfig active = snapshot.Status.Running ? snapshot.ActiveConfig ?? config : config;
         writeEnabled.Checked = active.WriteAllowedRemotes.Contains(active.Remote, StringComparer.Ordinal);
         writeEnabled.Enabled = writeAccess is not null && !snapshot.Confirming && !string.IsNullOrWhiteSpace(config.Remote);
@@ -122,6 +134,8 @@ public sealed class SettingsForm : DbxForm
             }
         }
     }
+
+    private static string DisplayPrefix(DbxConfig config) => config.CopyPathBinding is null ? "" : config.CopyPathPrefix ?? "";
 
     private async Task ChangeWriteAccessAsync()
     {
@@ -155,7 +169,11 @@ public sealed class SettingsForm : DbxForm
             string newRemote = remote.Text.Trim(), newCache = cacheDir.Text.Trim(), limit = cacheLimit.Text.Trim();
             string newDrive = (string?)drive.SelectedItem ?? throw new ArgumentException("マウント先を選んでください。");
             string keep = Retentions[retention.SelectedIndex];
-            await save(c => c with { Remote = newRemote, Retention = keep, CacheDir = newCache, CacheMaxSize = limit, MountPoint = newDrive, UpdateCheck = updateCheck.Checked });
+            string? prefix = DropboxCopyPaths.NormalizePrefix(copyPathPrefix.Text);
+            bool checkUpdates = updateCheck.Checked;
+            await save(c => c with { Remote = newRemote, Retention = keep, CacheDir = newCache, CacheMaxSize = limit,
+                MountPoint = newDrive, UpdateCheck = checkUpdates, CopyPathPrefix = prefix,
+                CopyPathBinding = newRemote == c.Remote ? c.CopyPathBinding : null });
             // Registration is changed only after the guarded config update succeeds.
             if (executable is not null && autoStart.Checked != originalAutoStart)
             {

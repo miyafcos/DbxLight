@@ -22,12 +22,19 @@ internal static class PrivateJsonFile
         using var directory = PrivateStateFiles.LockParent(path);
         PrivateStateFiles.ValidateExisting(path);
         string pending = path + ".pending-" + Guid.NewGuid().ToString("N");
-        using (FileStream stream = new FileInfo(pending).Create(FileMode.CreateNew, FileSystemRights.Write,
-            FileShare.Read, 4096, FileOptions.WriteThrough, PrivateStateFiles.FileSecurity()))
+        bool created = false;
+        try
         {
-            byte[] bytes = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(value, JsonFiles.Options) + "\n");
-            stream.Write(bytes); stream.Flush(true);
+            using (FileStream stream = new FileInfo(pending).Create(FileMode.CreateNew, FileSystemRights.Write,
+                FileShare.Read, 4096, FileOptions.WriteThrough, PrivateStateFiles.FileSecurity()))
+            {
+                created = true;
+                byte[] bytes = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(value, JsonFiles.Options) + "\n");
+                stream.Write(bytes); stream.Flush(true);
+            }
+            File.Move(pending, path, overwrite: true);
+            created = false;
         }
-        File.Move(pending, path, overwrite: true);
+        finally { if (created) File.Delete(pending); }
     }
 }

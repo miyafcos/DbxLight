@@ -13,6 +13,7 @@ public static class Program
         {
             AppOptions options = AppOptions.Parse(args);
             if (options.SmokeOutput is not null) return SmokeRunner.Run(options);
+            if (options.CopyPathServer) return ShellCopyServer.Run(options);
             if (options.Registration is not null)
                 return ApplyRegistration(options, new RegistrationService(options.RegistryRoot));
             using var instance = new SingleInstance(options.StatePath);

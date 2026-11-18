@@ -30,7 +30,7 @@ dbxl [--config <設定JSON>] [--state <状態JSON>] <コマンド> [引数] [--j
 
 マウントを使う新コマンドは雲の相対パス（例: 資料/原稿.txt）と、割り当て先内の完全な手元のパス（例: T:\資料\原稿.txt または T:/資料/原稿.txt）を受ける。
 日本語・空白・長いパスは引数を引用する。根は "" または T:\。片側だけの根、割り当て先外、ドライブ相対、デバイスパス、相対の .. は拒否する。
-resolve は HTTPS の Dropbox /home/ URL も受ける。既存の hide / unhide の相対パスの正規化は維持している。
+resolve と stat は「Web のリンクをコピー」で得た HTTPS の Dropbox /home/ URL も受ける。口座と名前空間から Web 上の場所を確認できる場合は URL を返す。確認できない場合、相対パスや手元のパスを使うと webUrl は null になる。
 
 --json は成功・失敗とも標準出力に JSON を一つだけ返す（複数行に整形する）。記録・打ち切りの案内は標準エラー。
 --format json の agent-guide も同じ契約。--json は --format markdown より優先する。
@@ -60,7 +60,7 @@ $LASTEXITCODE
 | snapshot fetch --plan <JSONL> --store <フォルダ> [--parallel N] [--failures <JSONL>] [--max-rps N] [--deadline-seconds N] --json | rev を指定して本体を取得し、長さとハッシュを照合 |
 | ls <パス> [--recursive] [--depth N] [--max N] [--offset N] [--include-hidden] [--time-limit 秒] [--json] | 子の名前・種類・大きさ・時刻・キャッシュ有無。既定は深さ1、1000件。recursive は深さ32。depth は明示値を優先 |
 | find <語> [--in <パス>] [--type file\|dir] [--depth N] [--max N] [--offset N] [--time-limit 秒] [--json] | 内容を読まず名前の部分一致。NFKC と invariant の大文字化で大小・全半角・結合文字を吸収。既定は根、深さ8、1000件 |
-| stat <パス> [--time-limit 秒] [--json] | 1件の一覧情報・キャッシュ有無・待ち/途中/失敗・Web URL。idle はキューにない意味で、上がったという確認ではない |
+| stat <パスまたはURL> [--time-limit 秒] [--json] | 1件の一覧情報・キャッシュ有無・待ち/途中/失敗・Web URL。idle はキューにない意味で、上がったという確認ではない |
 | wait <パス>... [--timeout <秒>] [--json] | 指定した閉じたファイルが上がるまで待つ。既定120秒、小数可。上限86400秒、1000パス |
 | wait --all [--timeout <秒>] [--json] | 今のマウントの待ち・途中・未送信の管理情報から対象を集めて待つ。パスと --all は併用しない。1000件を超えたら3で返し、返った items を明示した小さい組に分けて待ち、そのあと --all を繰り返す |
 | refresh [<パス>] [--json] | vfs/refresh で指定フォルダの一覧だけを取り直す。省略は根。再帰しない。待ちを捨てたり、ファイルのキャッシュを消したりしない |
@@ -148,9 +148,40 @@ agent-guide の JSON は ok / code / message / mountPoint / readOnly / recoveryR
 回復・プロセス確認が未完了なら安全な説明の手引きを出し、ok=false、終了値3。人に知らせ、自動で解除しない。
 ドライブ文字のないフォルダ割り当ては「未設定（ドライブ文字なし）」と表示し、フォルダの実名を出さない。
 
+### パスとフォルダ共有
+
+3 つのコマンドには、設定されたマウント先にある項目の絶対パスを渡します。
+`path` はファイルとフォルダ、`share` はフォルダを受け付けます。`--config` または `DBXL_CONFIG` で接続先の設定を、`--state` または `DBXL_STATE` で稼働状態ファイルを選べます。
+招待のプレビューと送信は、稼働中のマウント、起動時の Dropbox 口座と名前空間、選んだフォルダと親の表示を照合します。旧版で起動したネットワークドライブ、固定ドライブ文字、フォルダ割り当ては、現行版でマウントし直してから共有状態を読み直してください。
+稼働中の `path` は、そのマウントが使う rclone の設定ファイルで確認します。停止中でも、同じ接続で確認済みの頭と認証ファイルの同一性を確かめられれば使えます。
+
+| コマンド | 結果 |
+| --- | --- |
+| `dbxl path <パス> [--json]` | Slack などに貼るパス。JSON では `result.path` |
+| `dbxl share show <パス> [--json]` | `result.shared` に直接共有済みか、`result.inherited` に上位フォルダから権限を引き継いでいるか、`result.members` にメンバーと権限。`result.connection` に調べた Dropbox 口座と接続先 |
+| `dbxl share invite <パス> --to <メール> [--to <メール>] --access <権限> [--message <文>] [--json]` | 送信前の内容と `result.confirmation`。`result.wouldShareFolder` が true なら送信時に共有フォルダを作成。`result.executed` は false |
+
+権限は `viewer`（閲覧のみ）または `editor`（編集できる）を指定します。`result.connection.namespaceKind` は `team_home`、`team_space`、`personal`、`explicit_namespace` のいずれかです。`result.connection.teamSpace` はチームルートを読んだ場合に true になります。
+`share show` はマウントを照合できない場合も設定の接続先を読み、`result.connection.mountVerified` を false にします。
+
+最初にプレビューの接続先、対象フォルダ、宛先の順と権限、一言を確認します。同じコマンドに `--execute --confirm <確認値>` を付けると Dropbox に招待を送り、`--json` を省略しても結果を JSON で返します。
+確認値は稼働中のマウントと Dropbox 上のフォルダ、共有の状態、宛先の順、権限、一言に対応します。招待の直前に、元のパスから口座、名前空間、フォルダ、直接共有を確認し直します。`confirmation_required`（終了値 2）、`confirmation_changed` または `mount_unverified`（終了値 3）が出たら状況を確認し、プレビューからやり直してください。
+`result.invited` は送信を確認できた宛先、`result.access` は権限、`result.sharedFolderCreated` は今回新しく共有フォルダにできたかを示します。
+`result.sharedFolderState` は `existing`、`created`、`not_created`、`unknown` のいずれかです。
+`result.invitationState` は `sent`、`not_sent`、`unknown` のいずれかです。
+引数の解析、確認値の照合、送信計画の作成までに止まると `ok=false`、`code`、`message` を返します。
+確認値を照合して再確認に進んだあとで止まると、送信前のマウント再照合も含め、確認できた進捗を `result` に返します。
+`unknown` の場合は `share show` で状態を確認してから次の操作を決めてください。
+
+終了値 2 は引数・設定・パスの誤りです。3 は認証不足（`missing_scope`）、時間切れ、確認中に対象が変わった場合などです。
+4 はチームの制限（`team_policy`）、入れ子（`inside_shared_folder`、`contains_shared_folder`）、通信エラーなどです。
+
+`dbxl set copyPathPrefix <頭>` は確認した Dropbox 口座に表示設定を保存します。空の値は自動に戻します。どちらも稼働中のマウントを続けたまま適用します。
+
 ### snapshot の読み出し
 
-snapshot list / metadata / fetch は Dropbox の API を直接読み、マウント停止中も使える。設定は --config / DBXL_CONFIG の指定を使い、状態ファイルは開かない。認証の切り替え途中・再ログインが必要な印があれば、回復の書き込みをせず auth_unavailable（3）で止まる。非表示や除外の設定にかかわらず指定した雲の範囲を読む。--json は必須。
+snapshot list / metadata / fetch は Dropbox の API を直接読み、マウント停止中も使える。設定は --config / DBXL_CONFIG の指定を使い、状態ファイルは開かない。
+選んだ rclone リモートの `impersonate_admin` が非空の場合は、管理者実行を避けるため `unsupported_namespace`（終了値 2）で止まる。文字列 `false` も非空として扱う。空欄または省略は従来どおり進む。認証の切り替え途中・再ログインが必要な印があれば、回復の書き込みをせず auth_unavailable（3）で止まる。非表示や除外の設定にかかわらず指定した雲の範囲を読む。--json は必須。
 
 ~~~text
 dbxl snapshot list "見本/数学" --entries "C:/sample/full.ndjson" --cursor-out "C:/sample/full.cursor.json" --json

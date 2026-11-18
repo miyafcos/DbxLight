@@ -312,12 +312,25 @@ internal static class SmokeRunner
                 foreach (DataGridViewRow row in grid.Rows)
                     foreach (DataGridViewCell cell in row.Cells)
                         if (cell.Value is { } value) yield return value.ToString()!;
+            if (control is ListView list)
+                foreach (ListViewItem item in list.Items)
+                    foreach (ListViewItem.ListViewSubItem cell in item.SubItems) yield return cell.Text;
             if (control is TreeView tree)
             {
                 IEnumerable<TreeNode> Nodes(TreeNodeCollection nodes) => nodes.Cast<TreeNode>().SelectMany(n => new[] { n }.Concat(Nodes(n.Nodes)));
                 foreach (TreeNode node in Nodes(tree.Nodes)) yield return node.Text;
             }
         }
+    }
+
+    internal static async Task CaptureShareScreensAsync(string output, Form share, Form confirm, Form settings)
+    {
+        Directory.CreateDirectory(output);
+        var evidence = new SmokeEvidence { RunFolder = Path.GetFullPath(output) };
+        await CaptureAsync(share, Path.Combine(output, "share-folder.png"), 100, evidence);
+        await CaptureAsync(confirm, Path.Combine(output, "share-confirm.png"), 100, evidence);
+        await CaptureAsync(settings, Path.Combine(output, "copy-path-settings.png"), 100, evidence);
+        if (evidence.LayoutIssues.Count != 0) throw new InvalidOperationException(string.Join("\n", evidence.LayoutIssues));
     }
 
     private static async Task CaptureAsync(Form form, string path, int percent, SmokeEvidence evidence, Func<Task>? prepare = null, bool closeAfter = true)

@@ -69,7 +69,8 @@ public sealed class SetupSession : IDisposable
         if (result.Succeeded)
         {
             Connected = true;
-            Draft = Draft with { Remote = "dbxlight:", RcloneConfigPath = login.ConfigPath, HiddenPaths = [], WriteAllowedRemotes = [], TestOverrides = null };
+            Draft = DropboxCopyPaths.ClearBinding(Draft) with { Remote = "dbxlight:", RcloneConfigPath = login.ConfigPath,
+                HiddenPaths = [], WriteAllowedRemotes = [], TestOverrides = null };
             ScopeVerified = false; TeamRoot = false; Folders = [];
             Step = SetupStep.Scope;
         }
@@ -90,7 +91,8 @@ public sealed class SetupSession : IDisposable
         if (!names.Contains(name, StringComparer.Ordinal)) throw new ArgumentException("一覧から接続先を選んでください。");
         await Task.Run(() => controller.PrepareConnectionChange(Original), cancellation).ConfigureAwait(false);
         fileChange?.Dispose(); fileChange = null;
-        Draft = Draft with { Remote = name, RcloneConfigPath = null, HiddenPaths = [], WriteAllowedRemotes = [], TestOverrides = null };
+        Draft = DropboxCopyPaths.ClearBinding(Draft) with { Remote = name, RcloneConfigPath = null,
+            HiddenPaths = [], WriteAllowedRemotes = [], TestOverrides = null };
         Connected = true; ScopeVerified = false; TeamRoot = false; Folders = [];
         Message = "選んだリモートのフォルダを確認してください。";
         Step = SetupStep.Scope;
@@ -101,7 +103,8 @@ public sealed class SetupSession : IDisposable
         if (Step != SetupStep.Scope || !Connected) throw new InvalidOperationException("見える範囲のステップを開いてください。");
         ScopeVerified = false; Folders = [];
         string own = Draft.Remote.TrimEnd('/');
-        Draft = Draft with { Remote = own + (teamRoot ? "/" : "") };
+        string destination = own + (teamRoot ? "/" : "");
+        if (Draft.Remote != destination) Draft = DropboxCopyPaths.ClearBinding(Draft) with { Remote = destination };
         TeamRoot = teamRoot;
         try
         {
@@ -141,6 +144,7 @@ public sealed class SetupSession : IDisposable
         DbxConfig saved = fileChange is null
             ? controller.ApplyConnectionChange(Original, _ => Draft with { WriteAllowedRemotes = [] })
             : fileChange.Commit(controller, Original, Draft);
+        if (fileChange is null) DropboxCopyPaths.InvalidateCache(controller.Config.PathName);
         fileChange?.Dispose(); fileChange = null;
         Draft = saved; Committed = true;
         return saved;

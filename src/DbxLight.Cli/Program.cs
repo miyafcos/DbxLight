@@ -10,10 +10,15 @@ public static class Program
 {
     public static int Main(string[] args) => MainCore(args, null);
 
-    internal static int MainCore(string[] args, MountController? controller)
+    internal static int MainCore(string[] args, MountController? controller) =>
+        RunCommand(args, controller);
+
+    internal static int RunCommand(string[] args, MountController? controller, Func<DbxConfig, DropboxFolderClient>? folderClient = null)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
         string requestedCommand = CommandName(args);
+        if (requestedCommand is "path" or "share")
+            return FolderCommands.Run(args, controller, folderClient ?? DropboxFolderClient.Open);
         bool json = args.Contains("--json", StringComparer.Ordinal) ||
             (requestedCommand == "agent-guide" && Array.IndexOf(args, "--format") is int formatIndex &&
              formatIndex >= 0 && formatIndex + 1 < args.Length && args[formatIndex + 1] == "json");
@@ -55,7 +60,7 @@ public static class Program
             string[] operands = words.Skip(1).ToArray();
             reading = agent || command is "status" or "hidden" or "folders" or "doctor" ||
                 command == "config" && operands.FirstOrDefault() == "show" || command == "rescue" && operands.FirstOrDefault() == "list";
-            if (AgentCommands.IsCommand(command)) return AgentCommands.Run(controller, command, operands, json);
+            if (AgentCommands.IsCommand(command)) return AgentCommands.Run(controller, command, operands, json, folderClient ?? DropboxFolderClient.OpenWithoutRenewal);
             void Done(object data, Action text)
             {
                 if (json) WriteJson(new { ok = true, result = data }); else text();
@@ -186,7 +191,16 @@ public static class Program
                     return 0;
                 case "set":
                     Arity(operands, 2);
-                    controller.UpdateConfig(config => ConfigStore.Set(config, operands[0], operands[1]));
+                    if (operands[0] == "copyPathPrefix")
+                    {
+                        var expected = controller.Config.Load();
+                        var next = DropboxCopyPaths.BindSettingsAsync(expected, ConfigStore.Set(expected, operands[0], operands[1]),
+                            folderClient ?? DropboxFolderClient.Open, CancellationToken.None, rebind: true,
+                            mount: new FolderShareMount(controller.Config.PathName, controller.State.PathName, controller.FolderMountInspector))
+                            .GetAwaiter().GetResult();
+                        _ = controller.TrySavePreferences(expected, next);
+                    }
+                    else controller.UpdateConfig(config => ConfigStore.Set(config, operands[0], operands[1]));
                     Done(new { saved = operands[0] }, () => Console.WriteLine("Saved " + operands[0] + "."));
                     return 0;
                 case "config":
@@ -224,6 +238,11 @@ public static class Program
             }
             else Console.Error.WriteLine(BusyMessage);
             return requestedCommand == "status" ? 0 : 3;
+        }
+        catch (FolderOperationException e)
+        {
+            if (json) WriteJson(new { ok = false, code = e.Code, message = e.Message }); else Console.Error.WriteLine(e.Message);
+            return e.ExitCode;
         }
         catch (AgentCommandException e)
         {
@@ -348,6 +367,6 @@ public static class Program
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
     };
     internal static void WriteJson(object value) => Console.WriteLine(JsonSerializer.Serialize(value, OutputOptions));
-    private const string HelpText = "dbxl [--config <path>] [--state <path>] [--json] help|snapshot list <folder> --entries <NDJSON> --cursor-out <cursor> [--cursor-file <cursor>] [--limit N] [--max-rps N] [--deadline-seconds N] --json|snapshot metadata --paths-file <JSONL> --output <JSONL> [--max-rps N] [--deadline-seconds N] --json|snapshot fetch --plan <JSONL> --store <folder> [--parallel N] [--failures <JSONL>] [--max-rps N] [--deadline-seconds N] --json|run|start|stop [--force]|restart|status|hide <path>|unhide <path>|hidden [--max N] [--offset N]|folders [path] [--max N] [--offset N]|set <key> <value>|config show|doctor|recovery clear --i-understand-pending-may-be-lost|rescue list [--all|--max N]|rescue acknowledge <id>|ls <path> [--recursive] [--depth N] [--max N] [--offset N] [--include-hidden] [--time-limit seconds]|find <term> [--in <path>] [--type file|dir] [--depth N] [--max N] [--offset N] [--time-limit seconds]|stat <path> [--time-limit seconds]|wait <path>...|wait --all [--timeout seconds]|refresh [path]|resolve <path-or-url>|agent-guide [--format markdown|json]|version|--version|update check|update download|update apply [--from <zip>] [--sha256 <hex>] --yes";
+    private const string HelpText = "dbxl [--config <path>] [--state <path>] [--json] help|snapshot list <folder> --entries <NDJSON> --cursor-out <cursor> [--cursor-file <cursor>] [--limit N] [--max-rps N] [--deadline-seconds N] --json|snapshot metadata --paths-file <JSONL> --output <JSONL> [--max-rps N] [--deadline-seconds N] --json|snapshot fetch --plan <JSONL> --store <folder> [--parallel N] [--failures <JSONL>] [--max-rps N] [--deadline-seconds N] --json|run|start|stop [--force]|restart|status|hide <path>|unhide <path>|hidden [--max N] [--offset N]|folders [path] [--max N] [--offset N]|set <key> <value>|config show|doctor|recovery clear --i-understand-pending-may-be-lost|rescue list [--all|--max N]|rescue acknowledge <id>|ls <path> [--recursive] [--depth N] [--max N] [--offset N] [--include-hidden] [--time-limit seconds]|find <term> [--in <path>] [--type file|dir] [--depth N] [--max N] [--offset N] [--time-limit seconds]|stat <path> [--time-limit seconds]|wait <path>...|wait --all [--timeout seconds]|refresh [path]|resolve <path-or-url>|path <mount-path>|share show <mount-path>|share invite <mount-path> --to <email> [--to <email>] --access viewer|editor [--message <text>] [--execute --confirm <value>]|agent-guide [--format markdown|json]|version|--version|update check|update download|update apply [--from <zip>] [--sha256 <hex>] --yes";
     private static void Help() => Console.WriteLine(HelpText);
 }

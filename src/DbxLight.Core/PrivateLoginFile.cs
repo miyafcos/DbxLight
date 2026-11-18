@@ -78,6 +78,7 @@ internal sealed class PrivateLoginFile : IDisposable
         CredentialSwitch.WriteTransaction(config.PathName, transaction);
         CredentialSwitch.Checkpoint?.Invoke("switch-before-settings");
         DbxConfig saved = controller.ApplyConnectionChange(expected, _ => after);
+        DropboxCopyPaths.InvalidateCache(config.PathName);
         CredentialSwitch.Checkpoint?.Invoke("switch-settings");
         transaction = transaction with { Stage = "ConfigInstalled" };
         CredentialSwitch.WriteTransaction(config.PathName, transaction);

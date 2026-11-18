@@ -45,6 +45,10 @@ public sealed record DbxConfig
     public long DownloadByteThreshold { get; init; } = 2000000000;
     public int RcPort { get; init; } = 5601;
     public bool UpdateCheck { get; init; } = true;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CopyPathPrefix { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CopyPathBinding { get; init; }
     public string LogDir { get; init; } = Path.Combine(LocalRoot, "logs");
     public TestOverrides? TestOverrides { get; init; }
 
@@ -114,7 +118,9 @@ public sealed record DbxConfig
         if (MountPaths.IsSameOrBelow(Path.GetFullPath(RescueDir), mount) ||
             MountPaths.IsSameOrBelow(Path.GetFullPath(RescueDir), Path.GetFullPath(CacheDir)))
             throw new ArgumentException("rescueDir must be outside the mount and cache.");
-        return this with { HiddenPaths = HiddenFolders.Normalize(HiddenPaths).ToArray() };
+        string? prefix = DropboxCopyPaths.NormalizePrefix(CopyPathPrefix);
+        return this with { HiddenPaths = HiddenFolders.Normalize(HiddenPaths).ToArray(),
+            CopyPathPrefix = prefix, CopyPathBinding = prefix is null ? null : CopyPathBinding };
     }
 
     private static void Require(string value, string name)
@@ -199,6 +205,8 @@ public sealed class ConfigStore
 
     public static DbxConfig Set(DbxConfig config, string key, string value)
     {
+        if (key == "copyPathPrefix") return (config with { CopyPathPrefix = value }).Validate();
+        if (key == "copyPathBinding") throw new ArgumentException("Unknown setting: " + key);
         JsonObject node = JsonSerializer.SerializeToNode(config, JsonFiles.Options)!.AsObject();
         JsonObject target = node;
         string leaf = key;

@@ -22,6 +22,12 @@ public sealed record RuntimeState
     public string? LaunchRecoveryProof { get; init; }
     public bool LaunchPending { get; init; }
     public bool? StartedReadOnly { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MountDevice { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MountDropboxBinding { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MountDropboxCursor { get; init; }
     public string GenerationId { get; init; } = "";
     public long GenerationNumber { get; init; }
     public long RevisionNumber { get; init; }

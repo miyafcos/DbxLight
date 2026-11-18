@@ -17,7 +17,7 @@ internal static class Program
         File.AppendAllText(records, JsonSerializer.Serialize(new { pid = Environment.ProcessId, startedUtc = self.StartTime.ToUniversalTime(), args }) + "\n", new UTF8Encoding(false));
         int index = Array.IndexOf(args, "--config");
         string? config = index >= 0 ? args[index + 1] : null;
-        if (args[0] == "mount" && scenario is "mount" or "mount-poison")
+        if (args[0] == "mount" && scenario is "mount" or "mount-poison" or "mount-bad-config-paths" or "mount-long-config-paths")
         {
             if (scenario == "mount-poison")
             {
@@ -26,7 +26,7 @@ internal static class Program
                 if (logIndex >= 0 && args[logIndex + 1] != "NUL")
                     File.AppendAllText(args[logIndex + 1], "ERROR " + Marker + "\n", new UTF8Encoding(false));
             }
-            return Mount(args);
+            return Mount(args, scenario);
         }
         if (scenario.StartsWith("poison", StringComparison.Ordinal) && args[0] is "version" or "rc")
         {
@@ -55,9 +55,25 @@ internal static class Program
             }
             return 92;
         }
+        if (args[0] == "about" && scenario == "folder-refresh-hold" && config is not null)
+        {
+            File.Copy(config, config + ".staged");
+            File.WriteAllText(Path.Combine(root, "renewal-ready"), "");
+            Thread.Sleep(TimeSpan.FromMinutes(1));
+            return 0;
+        }
+        if (args[0] == "about" && scenario == "folder-refresh" && config is not null)
+        {
+            string text = File.ReadAllText(config);
+            // Like rclone, a saved token with no expiry or a future expiry is reused.
+            if (text.Contains("2000-01-01", StringComparison.Ordinal))
+                File.WriteAllText(config, text.Replace("SAMPLE_UNIT9_TOKEN", "SAMPLE_UNIT9_UPDATED").Replace("2000-01-01", "2099-01-01"));
+            return 0;
+        }
         if (args[0] == "listremotes")
         {
             Console.Error.WriteLine(Marker);
+            if (scenario == "folder-web-roundtrip") { Console.WriteLine("sample: dropbox"); return 0; }
             if (scenario.StartsWith("poison", StringComparison.Ordinal)) Console.WriteLine(Marker);
             Console.WriteLine(config is null ? "sample-existing:\nteam-archive:" : File.Exists(config) && new FileInfo(config).Length > 0 ? "dbxlight:" : "");
             return 0;
@@ -72,6 +88,12 @@ internal static class Program
                 string selected = JsonSerializer.Serialize(new { Name = "sample.txt", IsDir = false, Size = 3,
                     ModTime = "2026-01-01T00:00:00Z", ProviderToken = Marker });
                 Console.WriteLine(args.Contains("--stat") ? selected : "[" + selected + "]");
+                return 0;
+            }
+            if (scenario == "folder-web-roundtrip")
+            {
+                const string item = "{\"Name\":\"Reports\",\"IsDir\":true,\"Size\":-1,\"ModTime\":\"2026-01-01T00:00:00Z\"}";
+                Console.WriteLine(args.Contains("--stat") ? item : "[" + item + "]");
                 return 0;
             }
             if (scenario == "team-failure" && args[1].EndsWith(":/", StringComparison.Ordinal)) { Console.WriteLine(Marker); return 17; }
@@ -97,7 +119,7 @@ internal static class Program
         return 92;
     }
 
-    private static int Mount(string[] args)
+    private static int Mount(string[] args, string scenario)
     {
         string Value(string name) => args[Array.IndexOf(args, name) + 1];
         string drive = args[2].TrimEnd('\\');
@@ -111,11 +133,16 @@ internal static class Program
         var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
         string target = @"\??\" + folder;
         bool mapped = false;
+        bool badConfigPaths = scenario is "mount-bad-config-paths" or "mount-long-config-paths";
+        using Process? realMount = badConfigPaths ? StartLocalMount() : null;
         try
         {
             listener.Start();
-            if (!DefineDosDevice(1, drive, target)) return 93;
-            mapped = true;
+            if (realMount is null)
+            {
+                if (!DefineDosDevice(1, drive, target)) return 93;
+                mapped = true;
+            }
             bool quit = false;
             while (!quit)
             {
@@ -139,14 +166,36 @@ internal static class Program
                     "/core/stats" => new { transfers = 0, transferring = Array.Empty<object>() },
                     _ => new { }
                 };
-                byte[] json = JsonSerializer.SerializeToUtf8Bytes(response);
+                bool optionalCheck = badConfigPaths && path == "/config/paths";
+                if (optionalCheck)
+                {
+                    File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "config-paths-observed"), "");
+                    response = new { config = @"T:\" + new string('z', 40000) };
+                }
+                byte[] json = optionalCheck && scenario == "mount-bad-config-paths" ? "{"u8.ToArray() :
+                    JsonSerializer.SerializeToUtf8Bytes(response);
                 byte[] prefix = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + json.Length + "\r\nConnection: close\r\n\r\n");
                 stream.Write(prefix); stream.Write(json); stream.Flush();
                 quit = path == "/core/quit";
             }
             return 0;
         }
-        finally { listener.Stop(); if (mapped) _ = DefineDosDevice(7, drive, target); }
+        finally
+        {
+            listener.Stop();
+            if (mapped) _ = DefineDosDevice(7, drive, target);
+            if (realMount is { HasExited: false }) { realMount.Kill(); realMount.WaitForExit(); }
+        }
+
+        Process StartLocalMount()
+        {
+            string executable = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "real-rclone.txt")).Trim();
+            var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
+            foreach (string option in new[] { "mount", folder, drive, "--read-only", "--network-mode",
+                "--volname", Value("--volname"), "--config", Value("--config") })
+                start.ArgumentList.Add(option);
+            return Process.Start(start) ?? throw new InvalidOperationException("Could not start the isolated local rclone.");
+        }
     }
     [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "DefineDosDeviceW", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]

@@ -15,7 +15,7 @@ internal static partial class SnapshotTests
         runner.Test("snapshot: default config discovery and repeated owned rclone renewals", DefaultBroker);
         runner.Test("snapshot: cancellation kills owned rclone helper", BrokerCancel);
         runner.Test("snapshot: no credentials in stdout/stderr/files/exceptions", Privacy);
-        runner.Test("snapshot: exactly five Dropbox routes and two fixed hosts", Routes);
+        runner.Test("snapshot: five reader routes, one folder cursor route and two fixed hosts", Routes);
         runner.Test("snapshot: CLI/docs contract and readonly config", Documentation);
     }
     private static string Conf(string expiry) => "[other]\ntype = dropbox\ntoken = {\"access_token\":\"" + Other +
@@ -36,6 +36,35 @@ internal static partial class SnapshotTests
             catch (SnapshotException e) { TestRunner.Equal(code, e.Code); TestRunner.Assert(!e.ToString().Contains(Access)); }
         }
     }
+    internal static void AdminOverride()
+    {
+        foreach (string value in new[] { "", "false", "true" })
+        {
+            var f = new Fixture();
+            Directory.CreateDirectory(f.PathFor("auth"));
+            string configFile = Path.Combine("auth", "fake.conf");
+            f.Write(configFile, Conf("2099-01-01T00:00:00Z") + "impersonate_admin = " + value + "\n");
+            var config = f.Config with { RcloneConfigPath = f.PathFor(configFile) };
+            var request = f.List();
+            int listCalls = 0;
+            var result = DropboxSnapshotReader.RunAsync(config, request, broker: new SnapshotTokenBroker(config),
+                handler: new Handler((_, _) => { listCalls++; return Task.FromResult(Page([FolderEntry()])); }))
+                .GetAwaiter().GetResult();
+            if (value.Length == 0)
+            {
+                TestRunner.Assert(result.ExitCode == 0, result.Code);
+                TestRunner.Equal(1, listCalls);
+                TestRunner.Assert(result.Ok && File.Exists(request.Entries));
+            }
+            else
+            {
+                Failure(result, 2, "unsupported_namespace");
+                TestRunner.Equal(0, listCalls);
+                TestRunner.Assert(!File.Exists(request.Entries));
+            }
+        }
+    }
+
     private static (SnapshotTokenBroker Broker, string Fake) FakeRclone(string scenario)
     {
         var f = new Fixture(); string fake = f.PathFor("fake"); Directory.CreateDirectory(fake);
@@ -85,13 +114,21 @@ internal static partial class SnapshotTests
     }
     private static void Routes()
     {
-        string source = string.Join("\n", Directory.EnumerateFiles(Path.Combine(UnitTests.RepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
-            .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)).Select(File.ReadAllText));
-        var routes = Regex.Matches(source, "\"(?<route>(?:files|users)/[a-z_/]+)\"").Select(m => m.Groups["route"].Value).ToHashSet();
-        TestRunner.Assert(routes.SetEquals(new[] { SnapshotEndpoints.Account, SnapshotEndpoints.List, SnapshotEndpoints.Continue, SnapshotEndpoints.Metadata, SnapshotEndpoints.Download }));
+        string[] files = Directory.EnumerateFiles(Path.Combine(UnitTests.RepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(p => !p.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)).ToArray();
+        string folderClient = files.Single(file => Path.GetFileName(file) == "DropboxFolderClient.cs");
+        string snapshotSource = string.Join("\n", files.Where(file => file != folderClient).Select(File.ReadAllText));
+        TestRunner.Assert(RoutesIn(snapshotSource).SetEquals(new[] { SnapshotEndpoints.Account, SnapshotEndpoints.List,
+            SnapshotEndpoints.Continue, SnapshotEndpoints.Metadata, SnapshotEndpoints.Download }));
+        string folderSource = File.ReadAllText(folderClient);
+        TestRunner.Assert(RoutesIn(folderSource).SetEquals(new[] { "files/list_folder/get_latest_cursor" }));
+        string source = snapshotSource + "\n" + folderSource;
         var hosts = Regex.Matches(source, "https://[a-z.]*dropboxapi[.]com").Select(m => m.Value).ToHashSet();
         TestRunner.Assert(hosts.SetEquals(new[] { SnapshotEndpoints.ApiHost, SnapshotEndpoints.ContentHost }));
         TestRunner.Assert(source.Contains("AllowAutoRedirect = false"));
+
+        static HashSet<string> RoutesIn(string text) =>
+            Regex.Matches(text, "\"(?<route>(?:files|users)/[a-z_/]+)\"").Select(match => match.Groups["route"].Value).ToHashSet();
     }
     private static void Documentation()
     {

@@ -167,12 +167,14 @@ internal static partial class Unit8Tests
         var options = new AppOptions(Path.Combine(root, "config.json"), state);
         var probe = new TcpListener(IPAddress.Loopback, 0); probe.Start();
         int port = ((IPEndPoint)probe.LocalEndpoint).Port; probe.Stop();
-        string address = $"http://127.0.0.1:{port}/", name = "DbxLight-0.1.1-win-x64.zip";
-        byte[] zip = Package("0.1.1");
+        TestRunner.Assert(UpdateVersion.TryParse(UpdateVersion.Current, out var current));
+        string version = (current with { Patch = checked(current.Patch + 1) }).ToString();
+        string address = $"http://127.0.0.1:{port}/", name = $"DbxLight-{version}-win-x64.zip";
+        byte[] zip = Package(version);
         byte[] checksum = Encoding.UTF8.GetBytes(UpdatePackage.Hash(zip) + "  " + name + "\n");
         byte[] release = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            tag_name = "v0.1.1", draft = false, prerelease = false,
+            tag_name = "v" + version, draft = false, prerelease = false,
             assets = new[] {
                 new { name, browser_download_url = address + name, size = zip.Length, digest = "sha256:" + UpdatePackage.Hash(zip) },
                 new { name = name + ".sha256", browser_download_url = address + name + ".sha256", size = checksum.Length, digest = "sha256:" + UpdatePackage.Hash(checksum) }
@@ -205,7 +207,7 @@ internal static partial class Unit8Tests
             JsonElement result = new UpdateCli(executable, options).RunAsync("download", CancellationToken.None).GetAwaiter().GetResult();
             string staging = result.GetProperty("staging").GetString()!;
             TestRunner.Assert(staging.StartsWith(Path.GetDirectoryName(state)!, StringComparison.Ordinal) && staging.Contains("更新の状態", StringComparison.Ordinal));
-            TestRunner.Equal("0.1.1", UpdatePackage.ValidateDirectory(staging).Version);
+            TestRunner.Equal(version, UpdatePackage.ValidateDirectory(staging).Version);
         }
         finally
         {

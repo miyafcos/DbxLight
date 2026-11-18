@@ -64,13 +64,14 @@ internal static class AgentCommands
 
     internal static bool IsCommand(string command) => command is "ls" or "wait" or "refresh" or "agent-guide" or "stat" or "find" or "resolve";
 
-    internal static int Run(MountController controller, string command, string[] args, bool json)
+    internal static int Run(MountController controller, string command, string[] args, bool json,
+        Func<DbxConfig, DropboxFolderClient> openFolder)
     {
         var options = new CommandOptions(args);
         if (command == "resolve")
         {
             string resolveInput = options.One();
-            using var resolver = new AgentMetadata(controller);
+            using var resolver = new AgentMetadata(controller, requireRemote: true, openFolder);
             AgentResolution resolution = resolver.Resolve(resolveInput);
             if (json) Program.WriteJson(resolution);
             else Console.WriteLine($"local={resolution.LocalPath}\nrelative={resolution.RemotePath}\nweb={resolution.WebUrl}");
@@ -100,7 +101,7 @@ internal static class AgentCommands
         {
             _ = options.TimeLimit(); // Accepted and validated; one folder read cannot be interrupted.
             string target = options.One();
-            using var stat = new AgentMetadata(controller);
+            using var stat = new AgentMetadata(controller, requireRemote: true, openFolder);
             AgentStatResult detail = stat.Stat(target);
             if (json) Program.WriteJson(detail);
             else Console.WriteLine($"{detail.Entry.Type}\t{detail.Entry.Size}\t{detail.Entry.ModifiedUtc:O}\tcached={detail.Entry.Cached}\t{detail.UploadState}\t{detail.WebUrl}");

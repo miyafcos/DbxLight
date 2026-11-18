@@ -21,10 +21,16 @@ public sealed class AccountSettings
         using PrivateLoginFile? change = dedicated ? new PrivateLoginFile(controller.Config, dedicatedConfig) : null;
         if (dedicated)
             await new RcloneLogin(expected.RclonePath, dedicatedConfig).DeleteAsync(change!.WorkingPath, cancellation).ConfigureAwait(false);
-        DbxConfig after = expected with { Remote = "", RcloneConfigPath = dedicated ? null : expected.RcloneConfigPath, WriteAllowedRemotes = [] };
-        DbxConfig saved = await Task.Run(() => change is null
-            ? controller.ApplyConnectionChange(expected, _ => after)
-            : change.Commit(controller, expected, after), cancellation).ConfigureAwait(false);
+        DbxConfig after = DropboxCopyPaths.ClearBinding(expected) with { Remote = "",
+            RcloneConfigPath = dedicated ? null : expected.RcloneConfigPath, WriteAllowedRemotes = [] };
+        DbxConfig saved = await Task.Run(() => ControlGate.Execute(() =>
+        {
+            controller.PrepareConnectionChange(expected);
+            return DropboxCopyPaths.CompleteLogout(controller.Config.PathName, () => change is null
+                ? controller.ApplyConnectionChange(expected, _ => after)
+                : change.Commit(controller, expected, after));
+        }), cancellation).ConfigureAwait(false);
+        SnapshotRenewalFile.RecoverAbandoned();
         CredentialSwitch.CleanupKnown(controller.Config.PathName, uncertainOrphans: false);
         CredentialSwitch.ClearRelogin(controller.Config.PathName);
         return saved;

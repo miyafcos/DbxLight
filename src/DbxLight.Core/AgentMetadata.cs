@@ -49,6 +49,9 @@ public sealed partial class AgentMetadata : IDisposable
     public string Source => rc is null ? "lsjson" : "mount";
 
     public AgentMetadata(MountController controller, bool requireRemote = true)
+        : this(controller, requireRemote, DropboxFolderClient.OpenWithoutRenewal) { }
+
+    internal AgentMetadata(MountController controller, bool requireRemote, Func<DbxConfig, DropboxFolderClient> openFolder)
     {
         this.controller = controller;
         var observed = controller.ReadAgentRuntime();
@@ -61,7 +64,7 @@ public sealed partial class AgentMetadata : IDisposable
             throw new AgentCommandException(2, "not_configured", "Remote is not configured. Check --config or DBXL_CONFIG.", Status);
         EnsureSafe();
         Config = Config.Validate(forMount: requireRemote);
-        webMapping = new(() => CloudWebMapping.Read(Config));
+        webMapping = new(() => ReadWebMapping(openFolder));
         if (Status.Running && Status.Ready && !Status.ProcessUncertain)
         {
             mount = new MountMetadata(Config.MountPoint);

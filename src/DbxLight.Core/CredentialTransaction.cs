@@ -34,6 +34,7 @@ internal static partial class CredentialSwitch
 
     internal static void Recover(string configPath)
     {
+        SnapshotRenewalFile.RecoverAbandoned();
         RecoverLogin(configPath);
     }
 

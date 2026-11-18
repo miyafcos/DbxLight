@@ -7,7 +7,7 @@ using System.Text.Json;
 
 namespace DbxLight.Core;
 
-// The only Dropbox endpoints in product code. No configurable URLs or redirects.
+// The fixed allowlist for snapshot operations. No configurable URLs or redirects.
 internal static class SnapshotEndpoints
 {
     internal const string ApiHost = "https://api.dropboxapi.com";
@@ -69,9 +69,6 @@ internal sealed class DropboxReadClient : IDisposable
         return (ns, Convert.ToHexString(SHA256.HashData(binding)).ToLowerInvariant());
     }
 
-    private static bool Same(SnapshotToken a, SnapshotToken b) =>
-        a.AccessToken == b.AccessToken && a.ExpiresUtc == b.ExpiresUtc;
-
     private async Task<SnapshotToken> CredentialAsync(SnapshotToken? rejected = null)
     {
         await auth.WaitAsync(budget.Token);
@@ -80,7 +77,7 @@ internal sealed class DropboxReadClient : IDisposable
             if (authenticationFailure is not null) throw authenticationFailure;
             SnapshotToken current = credential ?? throw new SnapshotException(3, "auth_unavailable");
             // A concurrent request has already renewed the rejected token: share its result.
-            if (rejected is not null && !Same(current, rejected)) return current;
+            if (rejected is not null && !current.SameValue(rejected)) return current;
             if (rejected is null && current.ExpiresUtc > DateTimeOffset.UtcNow.AddSeconds(10)) return current;
             byte[] key = Encoding.UTF8.GetBytes(current.AccessToken + "\n" + current.ExpiresUtc.UtcTicks);
             string fingerprint = Convert.ToHexString(SHA256.HashData(key));
@@ -90,7 +87,7 @@ internal sealed class DropboxReadClient : IDisposable
             await broker.RenewAsync(budget.Token);
             SnapshotToken updated = await broker.ReadAsync(budget.Token);
             if (original != broker.Remote) throw new SnapshotException(3, "binding_changed");
-            if (Same(current, updated) || updated.ExpiresUtc <= DateTimeOffset.UtcNow.AddSeconds(10))
+            if (current.SameValue(updated) || updated.ExpiresUtc <= DateTimeOffset.UtcNow.AddSeconds(10))
                 throw new SnapshotException(3, "auth_unavailable");
             if (pathRoot is not null)
             {

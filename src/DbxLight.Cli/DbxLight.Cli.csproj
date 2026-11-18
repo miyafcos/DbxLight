@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DbxLight.Core/DbxLight.Core.csproj" />
+    <InternalsVisibleTo Include="DbxLight.Tests" />
   </ItemGroup>
 </Project>

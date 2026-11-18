@@ -110,6 +110,8 @@ internal sealed partial class ResidentContext : ApplicationContext
             initializationCancellation.Token.ThrowIfCancellationRequested();
             if (options.HidePath is not null || options.WebPath is not null)
                 await HandleArgumentsAsync(options.HidePath is not null ? ["--hide", options.HidePath] : ["--web", options.WebPath!]);
+            if (options.WebCopyPath is { } link) await HandleArgumentsAsync(["--web-copy-shell", link + "|"]);
+            if (options.SharePath is { } sharePath) await HandleArgumentsAsync(["--share-shell", sharePath + "|"]);
             if (started is not null) await started(this);
         }
         catch (OperationCanceledException) when (initializationCancellation.IsCancellationRequested)
@@ -714,7 +716,7 @@ internal sealed partial class ResidentContext : ApplicationContext
         SettingsForm? form = null;
         form = new SettingsForm(Config, new RegistrationService(options.RegistryRoot),
             Environment.ProcessPath, options,
-            update => form!.AutoStartChanged ? ApplyConfigAsync(update) : ApplySettingsAsync(update),
+            update => ApplySettingsAsync(update, allowPreferencesOnly: !form!.AutoStartChanged),
             () => ShowSetupAsync(startAtLogin: true), LogoutAsync, SetWriteAccessAsync);
         form.UpdateSnapshot(Snapshot, Config);
         return form;
@@ -829,8 +831,28 @@ internal sealed partial class ResidentContext : ApplicationContext
                 catch (StaleHideConfirmationException) { /* Present the new target for a new confirmation. */ }
             }
         }
-        else if (forwarded.WebPath is { } web)
-            Process.Start(new ProcessStartInfo(ShellPaths.WebUrl(web, Config.MountPoint)) { UseShellExecute = true });
+        else if ((forwarded.WebPath ?? forwarded.WebCopyPath) is { } web)
+        {
+            try
+            {
+                var mount = new FolderShareMount(options.ConfigPath, options.StatePath);
+                string url = await ShellPaths.WebUrlAsync(web, Snapshot.Status.Running ? Snapshot.ActiveConfig ?? Config : Config,
+                    mount, DropboxFolderClient.Open, cancellation.Token);
+                if (forwarded.WebPath is not null) Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                else Clipboard.SetText(url);
+            }
+            catch (FolderOperationException e)
+            { Notify("Dropbox の Web の場所を確認できません", e.Message, ToolTipIcon.Warning); }
+        }
+        else if (forwarded.SharePath is { } sharePath)
+        {
+            var mount = new FolderShareMount(options.ConfigPath, options.StatePath);
+            var session = new ShareFolderSession(sharePath, mount, DropboxFolderClient.Open, () => Phase == ResidentPhase.Watching);
+            var form = Track(new ShareFolderForm(sharePath,
+                token => Task.Run(() => session.LoadAsync(requireMount: false, includeCopyPath: true, token), token),
+                (info, plan, token) => Task.Run(() => session.InviteAsync(info, plan, token), token)));
+            form.Show(); form.Activate();
+        }
         else ShowStatus();
     }
     protected override void Dispose(bool disposing)

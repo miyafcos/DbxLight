@@ -10,11 +10,13 @@ internal static partial class Unit6bTests
         using var f = new Unit5Fixture("u6b-resolve");
         void Configure(string backend)
         {
-            File.WriteAllText(f.Config.RcloneConfigPath!, "[sample]\ntype = " + backend + "\n", new UTF8Encoding(false));
+            File.WriteAllText(f.Config.RcloneConfigPath!, "[sample]\ntype = " + backend +
+                "\ntoken = {\"access_token\":\"SAMPLE_UNIT9_TOKEN\"}\n", new UTF8Encoding(false));
             f.Store.Save(f.Config with { Remote = "sample:Dept/共有", TestOverrides = null, WriteAllowedRemotes = [] });
         }
+        AgentMetadata Metadata() => new(f.Controller, requireRemote: true, Unit9Tests.FakePersonalWebClient);
         Configure("dropbox");
-        using (var metadata = new AgentMetadata(f.Controller))
+        using (var metadata = Metadata())
         {
             foreach (string relative in new[] { "", "原稿 a#%&+.txt", "folder./file.", "space /name " })
             {
@@ -30,16 +32,16 @@ internal static partial class Unit6bTests
             TestRunner.Throws<ArgumentException>(() => metadata.Resolve("https://www.dropbox.com/home/Outside/file.txt"));
         }
         Configure("local");
-        using (var other = new AgentMetadata(f.Controller))
+        using (var other = Metadata())
         {
             TestRunner.Assert(other.Resolve("file.txt").WebUrl is null);
             try { _ = other.Resolve("https://www.dropbox.com/home/Dept/file.txt"); throw new Exception("Expected mapping refusal."); }
             catch (AgentCommandException e) { TestRunner.Equal(3, e.ExitCode); TestRunner.Equal("web_mapping_unknown", e.Code); }
         }
         File.WriteAllText(f.Config.RcloneConfigPath!, "", new UTF8Encoding(false));
-        using (var unknown = new AgentMetadata(f.Controller)) TestRunner.Assert(unknown.Resolve("file.txt").WebUrl is null);
+        using (var unknown = Metadata()) TestRunner.Assert(unknown.Resolve("file.txt").WebUrl is null);
         f.Store.Save(f.Store.Load() with { RcloneConfigPath = null });
-        using (var unspecified = new AgentMetadata(f.Controller)) TestRunner.Assert(unspecified.Resolve("file.txt").WebUrl is null);
-        Console.WriteLine("Q4 Dropbox type inspected with listremotes --long only; Dept/subfolder round-trips; trailing dot/space uses exact extended path; non-Dropbox/missing type/default config mapping=null; no cloud request.");
+        using (var unspecified = Metadata()) TestRunner.Assert(unspecified.Resolve("file.txt").WebUrl is null);
+        Console.WriteLine("Q4 Dropbox mapping confirmed by a fake account reply; Dept/subfolder round-trips; trailing dot/space uses exact extended path; non-Dropbox/missing type/default config mapping=null; no cloud request.");
     }
 }
