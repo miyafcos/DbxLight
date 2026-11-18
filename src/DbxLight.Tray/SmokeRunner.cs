@@ -428,11 +428,11 @@ internal static class SmokeRunner
     }
     private static void SaveIcons(string path)
     {
-        using var bitmap = new Bitmap(720, 128);
+        using var bitmap = new Bitmap(864, 128);
         using Graphics g = Graphics.FromImage(bitmap);
         g.Clear(SystemColors.Window);
-        string[] names = ["稼働", "アップロード中", "注意", "失敗または停止", "準備中"];
-        for (int i = 0; i < 5; i++)
+        string[] names = ["稼働", "アップロード中", "注意", "失敗または停止", "準備中", "ダウンロード中"];
+        for (int i = 0; i < names.Length; i++)
         {
             using Bitmap small = TrayIconFactory.Draw((TrayState)i, 16);
             using Bitmap large = TrayIconFactory.Draw((TrayState)i, 32);

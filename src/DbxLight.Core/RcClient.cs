@@ -58,6 +58,7 @@ public sealed record DbxStatus
     public string? StopDisposition { get; init; }
     public string? RecoveryLocation { get; init; }
     public DownloadActivity? DownloadActivity { get; init; }
+    internal DownloadProgress? DownloadProgress { get; init; }
     public string? StatusError { get; init; }
 }
 

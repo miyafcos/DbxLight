@@ -8,6 +8,7 @@ public static class TrayIconFactory
     {
         TrayState.Running => Color.FromArgb(35, 137, 65),
         TrayState.Uploading => Color.FromArgb(32, 109, 190),
+        TrayState.Downloading => Color.FromArgb(0, 109, 127),
         TrayState.Attention => Color.FromArgb(190, 143, 12),
         TrayState.Failed => Color.FromArgb(192, 48, 48),
         _ => Color.FromArgb(116, 121, 126)
@@ -24,6 +25,11 @@ public static class TrayIconFactory
         g.FillEllipse(Brushes.White, 12, 8, 13, 15);
         g.FillEllipse(Brushes.White, 19, 15, 8, 9);
         g.FillRectangle(Brushes.White, 11, 17, 12, 7);
+        if (state == TrayState.Downloading)
+        {
+            g.FillRectangle(background, 14, 12, 4, 8);
+            g.FillPolygon(background, new Point[] { new(10, 18), new(22, 18), new(16, 23) });
+        }
         return bitmap;
     }
     public static Icon Create(TrayState state)

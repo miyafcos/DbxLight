@@ -175,7 +175,7 @@ internal static class TrayTests
             TestRunner.Assert(!TrayPresentation.Tooltip(snapshot with { ActiveConfig = config with { WriteAllowedRemotes = ["local:"] } }, config).Contains("読み取り専用"));
             TestRunner.Assert(TrayPresentation.Tooltip(snapshot with { Status = new(), ActiveConfig = config with { WriteAllowedRemotes = ["local:"] } }, config).Contains("読み取り専用"));
         });
-        runner.Test("tray presentation: five distinct states follow severity", () =>
+        runner.Test("tray presentation: six distinct states follow severity", () =>
         {
             TraySnapshot s = new(new() { Running = true, Ready = true, UploadsQueued = 0, UploadsInProgress = 0, ErroredFiles = 0 }, [], [], true, null);
             TestRunner.Equal(TrayState.Running, TrayPresentation.State(s));
@@ -183,7 +183,11 @@ internal static class TrayTests
             TestRunner.Equal(TrayState.Attention, TrayPresentation.State(s with { Error = "unavailable" }));
             TestRunner.Equal(TrayState.Failed, TrayPresentation.State(s with { Status = s.Status with { ErroredFiles = 1 } }));
             TestRunner.Equal(TrayState.Preparing, TrayPresentation.State(s, true));
-            TestRunner.Equal(5, Enum.GetValues<TrayState>().Select(TrayIconFactory.ColorFor).Distinct().Count());
+            var download = s with { Status = s.Status with { DownloadProgress = new("sample:", [new("key", "sample", 1, 2, 1, 1)]) } };
+            TestRunner.Equal(TrayState.Downloading, TrayPresentation.State(download));
+            TestRunner.Equal(TrayState.Attention, TrayPresentation.State(download with { Error = "unavailable" }));
+            TestRunner.Equal(TrayState.Failed, TrayPresentation.State(download with { Status = download.Status with { ErroredFiles = 1 } }));
+            TestRunner.Equal(6, Enum.GetValues<TrayState>().Select(TrayIconFactory.ColorFor).Distinct().Count());
         });
         runner.Test("tray log: latest twenty ERROR events span rotated logs without forwarding provider text", () =>
         {

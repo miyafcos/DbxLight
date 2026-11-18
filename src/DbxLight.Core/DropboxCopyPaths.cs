@@ -221,7 +221,7 @@ internal static class DropboxCopyPaths
     private static string? WindowsPath(string? path) =>
         path is null ? null : (Path.IsPathFullyQualified(path) ? Path.GetFullPath(path) : path).ToUpperInvariant();
 
-    private static string ConnectionKey(DbxConfig config) =>
+    internal static string ConnectionKey(DbxConfig config) =>
         Hash(new { config.Remote, RclonePath = WindowsPath(config.RclonePath), RcloneConfigPath = WindowsPath(config.RcloneConfigPath) });
 
     internal static string Binding(DbxConfig config, DropboxFolderAccount account) =>

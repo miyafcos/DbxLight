@@ -10,11 +10,14 @@ internal sealed partial class ResidentContext : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly Dictionary<TrayState, Icon> icons = Enum.GetValues<TrayState>().ToDictionary(s => s, TrayIconFactory.Create);
     private readonly System.Windows.Forms.Timer poll = new();
+    private readonly Stopwatch pollClock = Stopwatch.StartNew();
+    private TimeSpan fullRefreshDue;
     private readonly CancellationTokenSource cancellation = new();
     private readonly NotificationThrottle throttle = new();
     private readonly QueueAgeTracker ages = new();
     private readonly RestartTracker restarts = new();
     private readonly DownloadNoticeTracker downloadNotices = new();
+    private readonly LongDownloadNoticeTracker longDownloadNotices = new();
     private readonly ToolStripMenuItem pause, exit;
     private readonly HashSet<Form> windows = [];
     private readonly Func<ResidentContext, Task>? started;
@@ -77,7 +80,8 @@ internal sealed partial class ResidentContext : ApplicationContext
         menu.Items.Add(exit);
         tray = new NotifyIcon { Icon = icons[TrayState.Preparing], Text = "DbxLight 準備中", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += (_, _) => ShowStatus();
-        poll.Tick += async (_, _) => await RefreshAsync();
+        poll.Tick += async (_, _) => await RefreshAsync(
+            downloadsOnly: DownloadPresentation.HasDownloads(Snapshot) && pollClock.Elapsed < fullRefreshDue);
         poll.Interval = 1000; poll.Start();
         instance.Listen(args => Post(async () => await HandleArgumentsAsync(args)));
         Post(async () => await (initialization = InitializeAsync()));
@@ -282,7 +286,9 @@ internal sealed partial class ResidentContext : ApplicationContext
         source.Dispose();
         if (Phase != ResidentPhase.Exiting && ReferenceEquals(supervisor, task)) await RefreshAsync();
     }
-    public async Task RefreshAsync()
+    public Task RefreshAsync() => RefreshAsync(downloadsOnly: false);
+
+    private async Task RefreshAsync(bool downloadsOnly)
     {
         if (refreshing || Phase == ResidentPhase.Exiting || disposed || displayChanges > 0 && Phase != ResidentPhase.Starting) return;
         refreshing = true;
@@ -291,6 +297,19 @@ internal sealed partial class ResidentContext : ApplicationContext
         refreshCompletion = completion;
         try
         {
+            if (downloadsOnly)
+            {
+                TraySnapshot previous = Snapshot;
+                var progress = await Task.Run(() => SnapshotReader.ReadDownloadProgress(Controller, previous));
+                if (generation != displayGeneration || displayChanges > 0 || disposed || Phase == ResidentPhase.Exiting) return;
+                Snapshot = Snapshot with { Status = Snapshot.Status with { DownloadProgress = progress } };
+                UpdateTrayIcon();
+                statusForm?.UpdateDownloadProgress(Snapshot, Config);
+                SchedulePoll();
+                ShowDownloadNotice();
+                return;
+            }
+
             var read = await Task.Run(() =>
             {
                 var snapshot = SnapshotReader.Read(Controller);
@@ -320,10 +339,12 @@ internal sealed partial class ResidentContext : ApplicationContext
                 Notify("マウントが停止したため起動し直しました", "状態画面を開き、アップロード待ちと失敗したファイルを確認してください。", ToolTipIcon.Warning);
             UpdateTray();
             statusForm?.UpdateSnapshot(Snapshot, Oldest, Config);
-            poll.Interval = (int)TrayPresentation.PollInterval(Snapshot.Status, Waiting).TotalMilliseconds;
+            fullRefreshDue = pollClock.Elapsed + TrayPresentation.PollInterval(Snapshot.Status, Waiting);
+            SchedulePoll();
             if (downloadNotices.Observe(Snapshot.Identity, Snapshot.Status.DownloadActivity))
                 Notify("短時間に多くのファイルをダウンロードしています",
                     "必要なファイルだけ開き、一覧・名前の検索に dbxl ls / find を使ってください。ダウンロードは続けます。", ToolTipIcon.Warning, DownloadNoticeTracker.Key(Snapshot.Identity, Snapshot.Status.DownloadActivity!));
+            ShowDownloadNotice();
             var newRescues = Snapshot.Rescued?.Where(r => r.RecordStatus == "verified" && !r.NotificationShown && !r.Acknowledged).ToArray() ?? [];
             if (newRescues.Length > 0)
             {
@@ -392,11 +413,28 @@ internal sealed partial class ResidentContext : ApplicationContext
         exit.Enabled = pause.Enabled;
         UpdateTray();
     }
+    private void SchedulePoll() =>
+        poll.Interval = DownloadPresentation.PollDelay(fullRefreshDue - pollClock.Elapsed, DownloadPresentation.HasDownloads(Snapshot));
+
+    private void ShowDownloadNotice()
+    {
+        if (Phase != ResidentPhase.Watching) return;
+        if (longDownloadNotices.Observe(Snapshot, DateTimeOffset.UtcNow) is { } file)
+            Notify("ダウンロード中", DownloadPresentation.ShortName(file, 120), ToolTipIcon.Info,
+                LongDownloadNoticeTracker.Key(Snapshot.Identity, file));
+    }
+
     private void UpdateTray()
     {
-        tray.Icon = icons[TrayPresentation.State(Snapshot, Starting)];
-        tray.Text = TrayPresentation.Tooltip(Snapshot, Config, Starting);
+        UpdateTrayIcon();
         settingsForm?.UpdateSnapshot(Snapshot, Config);
+    }
+
+    private void UpdateTrayIcon()
+    {
+        Icon icon = icons[TrayPresentation.State(Snapshot, Starting)];
+        if (tray.Icon != icon) tray.Icon = icon;
+        tray.Text = TrayPresentation.Tooltip(Snapshot, Config, Starting);
     }
     public bool Notify(string title, string text, ToolTipIcon icon, string? notificationKey = null)
     {
@@ -505,7 +543,8 @@ internal sealed partial class ResidentContext : ApplicationContext
             {
                 SetPhase(shouldExit ? ResidentPhase.WaitingToExit : ResidentPhase.WaitingToPause);
                 Notify("アップロードが終わるまで待ちます", count is { } n ? TrayPresentation.StopWaiting(n) : "アップロード待ちを確認できるまで停止しません。", ToolTipIcon.Info);
-                poll.Interval = 5000;
+                fullRefreshDue = pollClock.Elapsed + TimeSpan.FromSeconds(5);
+                SchedulePoll();
             }
             else { CancelPendingUpdate(); SetPhase(ResidentPhase.Watching); }
         }

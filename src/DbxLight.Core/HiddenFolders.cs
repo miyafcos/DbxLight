@@ -60,6 +60,7 @@ public static class HiddenFolders
 
 public static class MountPaths
 {
+    internal const string WinFspCharacters = "\u0022*:<>?|\\";
     public static bool IsDriveRoot(string path) => path.Length == 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '\\';
 
     public static string CanonicalMount(string mount)

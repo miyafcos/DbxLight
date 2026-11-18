@@ -160,7 +160,7 @@ public sealed partial class MountController
             if (status.Running && status.Ready && status.StatusError is null)
             {
                 DownloadObservation downloads = DownloadMonitor.Read(state, DateTimeOffset.UtcNow);
-                status = status with { DownloadActivity = downloads.Activity };
+                status = status with { DownloadActivity = downloads.Activity, DownloadProgress = downloads.Progress };
                 if (downloads.State is not null)
                 {
                     state = state with { DownloadWatch = downloads.State };
@@ -1063,6 +1063,7 @@ public sealed partial class MountController
     private RuntimeState SaveRuntime(RuntimeState state)
     {
         state = RecoveryJournal.PrepareSave(Config.PathName, State.PathName, state, State.Load());
+        MountProof.Remember(state);
         if (RecoveryDestination.Resolved(state.ActiveConfig))
             RecoveryJournal.Save(Config.PathName, state);
         State.Save(state);

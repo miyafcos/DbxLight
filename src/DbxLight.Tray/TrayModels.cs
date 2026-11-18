@@ -4,7 +4,7 @@ using DbxLight.Core;
 
 namespace DbxLight.Tray;
 
-public enum TrayState { Running, Uploading, Attention, Failed, Preparing }
+public enum TrayState { Running, Uploading, Attention, Failed, Preparing, Downloading }
 public sealed record QueueItem(long Id, string Name, long Size, int Tries, bool Uploading);
 public sealed record QueueAge(TimeSpan Elapsed, bool PresentAtStartup);
 public sealed record MountIdentity(int Pid, DateTime StartedUtc);
@@ -87,12 +87,14 @@ public static class TrayPresentation
         if (snapshot.Rescued?.Any(r => !r.Acknowledged) == true) return TrayState.Attention;
         if (snapshot.Status.DownloadActivity?.Exceeded == true) return TrayState.Attention;
         if (snapshot.Error is not null || snapshot.Errors.Count > 0) return TrayState.Attention;
+        if (DownloadPresentation.HasDownloads(snapshot)) return TrayState.Downloading;
         if (snapshot.Status.UploadsInProgress > 0 || snapshot.Status.UploadsQueued > 0) return TrayState.Uploading;
         return TrayState.Running;
     }
     public static string Tooltip(TraySnapshot snapshot, DbxConfig config, bool preparing = false)
     {
         if (snapshot.Confirming) return "DbxLight 確認中";
+        if (State(snapshot, preparing) == TrayState.Downloading) return DownloadPresentation.Tooltip(DownloadPresentation.Files(snapshot));
         if (snapshot.Status.Running) config = snapshot.ActiveConfig ?? config;
         string text = preparing ? "DbxLight 準備中" : !snapshot.Status.Running ? "DbxLight 停止中" :
             snapshot.Status.ErroredFiles > 0 ? $"失敗 {snapshot.Status.ErroredFiles} 件" :
@@ -116,6 +118,7 @@ public static class TrayPresentation
         {
             TrayState.Running => "稼働中",
             TrayState.Uploading => "アップロード中",
+            TrayState.Downloading => "ダウンロード中",
             TrayState.Attention => "注意が必要です",
             TrayState.Failed => snapshot.Status.Running ? "失敗があります" : "停止中",
             _ => snapshot.Confirming ? "確認中" : "準備中"
@@ -187,14 +190,33 @@ public static class SnapshotReader
         { return false; }
     }
 
-    public static bool IsCurrent(MountController controller, TraySnapshot snapshot)
+    internal static DownloadProgress? ReadDownloadProgress(MountController controller, TraySnapshot snapshot)
     {
-        RuntimeState? current = controller.State.Load();
-        return snapshot.Identity == IdentityOf(current) &&
+        RuntimeState? Current()
+        {
+            var state = PrivateJsonFile.Read<RuntimeState>(controller.State.PathName);
+            return state is { StopRequested: false, StopInProgress: false, StoppedUtc: null, LaunchPending: false } &&
+                Matches(controller, snapshot, state) ? state : null;
+        }
+
+        try
+        {
+            if (snapshot.Status.DownloadProgress is not { } previous || Current() is not { } state) return null;
+            var progress = DownloadMonitor.ReadProgress(state, previous.SourceFs);
+            return progress is not null && Current() is not null ? progress : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or ArgumentException)
+        { return null; }
+    }
+
+    public static bool IsCurrent(MountController controller, TraySnapshot snapshot) =>
+        Matches(controller, snapshot, controller.State.Load());
+
+    private static bool Matches(MountController controller, TraySnapshot snapshot, RuntimeState? current) =>
+        snapshot.Identity == IdentityOf(current) &&
             snapshot.Status.RecoveryRequired == (current?.RecoveryRequired ?? false) &&
             snapshot.Status.StopDisposition == current?.StopDisposition.ToString() &&
             (current is null || current.ConfigPath.Equals(controller.Config.PathName, StringComparison.OrdinalIgnoreCase));
-    }
 }
 
 public sealed record LogTail(IReadOnlyList<string> Errors, IReadOnlyList<string> StartupRecords, bool ReadSucceeded = false);

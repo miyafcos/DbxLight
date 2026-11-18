@@ -41,6 +41,7 @@ internal sealed class FolderShareMount(string configPath, string statePath,
             if (state is null) return ConfirmStopped(config);
             if (!OwnsState(state)) return default;
             if (!IsRunning(state, config)) return ConfirmStopped(config, state);
+            state = MountProof.Retain(state);
 
             var observed = (inspect ?? Inspect)(state);
             if (observed is null || state.MountDevice is { } launchDevice && !SamePath(launchDevice, observed.Device))
@@ -89,7 +90,7 @@ internal sealed class FolderShareMount(string configPath, string statePath,
         try
         {
             var state = PrivateJsonFile.Read<RuntimeState>(statePath);
-            return state is not null && IsRunning(state, config) ? state : null;
+            return state is not null && IsRunning(state, config) ? MountProof.Retain(state) : null;
         }
         catch (Exception e) when (e is not OutOfMemoryException) { return null; }
     }

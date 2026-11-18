@@ -35,6 +35,7 @@ internal static class EndToEnd
         {
             runner.Test("E2E cleanup: every owned rclone PID stopped; artifacts retained under 50 MB", context.Cleanup);
         }
+        runner.Test("E2E: resident shows, advances, and clears a mounted download", Unit10bDownloadTests.MountedDownload);
     }
 
     private sealed class TestContext

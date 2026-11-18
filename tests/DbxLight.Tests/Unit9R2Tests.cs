@@ -494,7 +494,7 @@ internal static partial class Unit9Tests
         private readonly Task serve;
         internal int Port { get; } = FreeFolderTestPort();
 
-        internal FolderTestRc(RuntimeState live, string remote, string credentials)
+        internal FolderTestRc(RuntimeState live, string remote, string credentials, bool runtimeStatus = false)
         {
             listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
             listener.Start();
@@ -508,7 +508,11 @@ internal static partial class Unit9Tests
                         object body = context.Request.Url!.AbsolutePath switch
                         {
                             "/core/pid" => new { pid = live.RclonePid },
-                            "/vfs/stats" => new { fs = remote, diskCache = new { path = live.ActiveConfig.CacheDir } },
+                            "/vfs/stats" => new { fs = remote, diskCache = new { path = live.ActiveConfig.CacheDir,
+                                uploadsQueued = 0, uploadsInProgress = 0, erroredFiles = 0, files = 0, bytesUsed = 0 } },
+                            "/vfs/queue" when runtimeStatus => new { queue = Array.Empty<object>() },
+                            "/core/transferred" when runtimeStatus => new { transferred = Array.Empty<object>() },
+                            "/core/stats" when runtimeStatus => new { transfers = 0 },
                             "/config/paths" => new { config = credentials },
                             _ => throw new InvalidOperationException("Unexpected folder mount RC route")
                         };

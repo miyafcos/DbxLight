@@ -21,7 +21,14 @@ public sealed record DownloadWatchState
 }
 public sealed record DownloadActivity(bool Known, long Files, long Bytes, int WindowSeconds, int FileThreshold,
     long ByteThreshold, bool Exceeded, int Episode, bool HistoryLimited, string Reason);
-public sealed record DownloadObservation(DownloadWatchState? State, DownloadActivity Activity);
+public sealed record DownloadObservation(DownloadWatchState? State, DownloadActivity Activity)
+{
+    internal DownloadProgress? Progress { get; init; }
+}
+
+internal sealed record DownloadFile(string FileKey, string Name, long Bytes, long? Size,
+    double? RemainingSeconds, double? ElapsedSeconds);
+internal sealed record DownloadProgress(string SourceFs, IReadOnlyList<DownloadFile> Files);
 
 /// <summary>Observe RC transfer metadata only. Never opens content or controls a transfer.</summary>
 public static class DownloadMonitor
@@ -36,7 +43,7 @@ public static class DownloadMonitor
             JsonElement stats = rc.Call("core/stats");
             return Observe(state.DownloadWatch, state.ActiveConfig, fs, completed, stats, now);
         }
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException or KeyNotFoundException or IOException or ArgumentException or OverflowException)
+        catch (Exception e) when (Unavailable(e))
         {
             DbxConfig config = state.ActiveConfig;
             return new(null, new(false, 0, 0, config.DownloadWindowSeconds, config.DownloadFileThreshold,
@@ -76,17 +83,11 @@ public static class DownloadMonitor
             if (!finishedTimes.TryGetValue(fileKey, out var before) || stamp > before) finishedTimes[fileKey] = stamp;
             if (Time(item, "started_at") is not { } startedAt || startedAt < cutoff) unknownBaseline.Add(fileKey);
         }
+        DownloadFile[] transfers = ActiveTransfers(fs, stats, out bool activeDirectionMissing);
+        missingDirection |= activeDirectionMissing;
         var active = new Dictionary<string, long>(StringComparer.Ordinal);
-        if (stats.TryGetProperty("transferring", out var transfers) && transfers.ValueKind == JsonValueKind.Array)
-            foreach (JsonElement item in transfers.EnumerateArray())
-            {
-                if (!IsContentTransfer(item)) continue;
-                if (!item.TryGetProperty("srcFs", out _) && !item.TryGetProperty("dstFs", out _)) { missingDirection = true; continue; }
-                if (!IsDownload(item, fs)) continue;
-                string name = item.GetProperty("name").GetString() ?? throw new InvalidDataException("Transfer has no name.");
-                string key = Hash(name.Normalize().ToUpperInvariant());
-                active[key] = active.GetValueOrDefault(key) + Math.Max(0, StatusReader.Number(item, "bytes"));
-            }
+        foreach (DownloadFile file in transfers)
+            active[file.FileKey] = active.GetValueOrDefault(file.FileKey) + file.Bytes;
         long total = StatusReader.Number(stats, "transfers");
         var priorActive = (previous?.Active ?? []).ToDictionary(e => e.FileKey, e => e.Bytes, StringComparer.Ordinal);
         bool gap = previous is null || now - previous.ObservedUtc > TimeSpan.FromSeconds(config.DownloadWindowSeconds);
@@ -121,8 +122,66 @@ public static class DownloadMonitor
         return new(next, new(!missingDirection, files, bytes, config.DownloadWindowSeconds, config.DownloadFileThreshold,
             config.DownloadByteThreshold, exceeded, episode, historyLimited,
             missingDirection ? "Transfer direction is unavailable; counts are incomplete." : historyLimited ?
-            "RC history is bounded; these counts are a lower bound." : "RC download transfer statistics."));
+            "RC history is bounded; these counts are a lower bound." : "RC download transfer statistics."))
+        { Progress = Progress(fs, transfers) };
     }
+
+    // The resident uses the same direction test on the lightweight poll. No state is written here.
+    internal static DownloadProgress? ReadProgress(RuntimeState state, string fs)
+    {
+        try
+        {
+            using var rc = new RcClient(state.RcPort, new(state.RcUser, state.RcPassword), TimeSpan.FromSeconds(1));
+            return Progress(fs, ActiveTransfers(fs, rc.Call("core/stats"), out _));
+        }
+        catch (Exception e) when (Unavailable(e)) { return null; }
+    }
+
+    private static bool Unavailable(Exception error) => error is HttpRequestException or OperationCanceledException or
+        JsonException or InvalidOperationException or KeyNotFoundException or IOException or ArgumentException or OverflowException;
+
+    private static DownloadFile[] ActiveTransfers(string fs, JsonElement stats, out bool missingDirection)
+    {
+        missingDirection = false;
+        if (!stats.TryGetProperty("transferring", out var transfers) || transfers.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var files = new List<DownloadFile>();
+        foreach (JsonElement item in transfers.EnumerateArray())
+        {
+            if (!IsContentTransfer(item)) continue;
+            if (!item.TryGetProperty("srcFs", out _) && !item.TryGetProperty("dstFs", out _))
+            {
+                missingDirection = true;
+                continue;
+            }
+            if (!IsDownload(item, fs)) continue;
+            string name = item.GetProperty("name").GetString() ?? throw new InvalidDataException("Transfer has no name.");
+            long bytes = Math.Max(0, StatusReader.Number(item, "bytes"));
+            long? size = item.TryGetProperty("size", out var total) && total.ValueKind == JsonValueKind.Number &&
+                total.TryGetInt64(out long length) && length >= 0 ? length : null;
+            double? speed = PositiveNumber(item, "speed");
+            double? currentSpeed = PositiveNumber(item, "speedAvg") ?? speed;
+            double? remaining = size is null ? null : bytes >= size ? 0 :
+                Number(item, "eta") ?? (size.Value - bytes) / currentSpeed;
+            files.Add(new(Hash(name.Normalize().ToUpperInvariant()), WindowsName(name), bytes, size, remaining, bytes / speed));
+        }
+        return files.ToArray();
+    }
+
+    private static DownloadProgress Progress(string fs, IEnumerable<DownloadFile> transfers) =>
+        new(fs, transfers.GroupBy(file => file.Name, StringComparer.Ordinal)
+            .Select(group => group.MaxBy(file => file.Bytes)!)
+            .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase).ToArray());
+
+    private static double? Number(JsonElement item, string field) =>
+        item.TryGetProperty(field, out var number) && number.ValueKind == JsonValueKind.Number &&
+        number.TryGetDouble(out double value) && double.IsFinite(value) && value >= 0 ? value : null;
+
+    private static double? PositiveNumber(JsonElement item, string field) => Number(item, field) is > 0 and var value ? value : null;
+
+    private static string WindowsName(string name) => new(name.Select(c =>
+        c == '/' ? '\\' : MountPaths.WinFspCharacters.Contains(c) ? (char)(c + 0xf000) : c).ToArray());
 
     private static bool IsDownload(JsonElement item, string fs)
     {

@@ -4,6 +4,9 @@ public sealed partial class StatusForm : DbxForm
 {
     private DbxLight.Core.DbxConfig displayedConfig = new();
     private readonly Label summary = Ui.Label("状態を読み込み中");
+    private readonly TableLayoutPanel summarySection = Ui.Column(3);
+    private readonly Label downloadHeading = Ui.Label("ダウンロード中", true);
+    private readonly DataGridView downloads = new();
     private readonly TextBox recovery = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill,
         Name = "recovery", MinimumSize = new Size(0, 384), ScrollBars = ScrollBars.Vertical, Visible = false, BackColor = SystemColors.Window };
     private readonly Label oldest = Ui.Label("アップロード待ちを読み込み中");
@@ -33,7 +36,15 @@ public sealed partial class StatusForm : DbxForm
         column.RowStyles.RemoveAt(8);
         column.RowStyles[1].SizeType = SizeType.Absolute;
         column.Dock = DockStyle.None; column.Anchor = AnchorStyles.Top | AnchorStyles.Left; column.AutoSize = true; column.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        column.Controls.Add(summary, 0, 0);
+        summarySection.AutoSize = true;
+        summarySection.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        summarySection.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        summarySection.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+        summarySection.Controls.Add(summary, 0, 0);
+        summarySection.Controls.Add(downloadHeading, 0, 1);
+        ConfigureDownloads();
+        summarySection.Controls.Add(downloads, 0, 2);
+        column.Controls.Add(summarySection, 0, 0);
         column.Controls.Add(recovery, 0, 1);
         column.Controls.Add(oldest, 0, 2);
         column.Controls.Add(queueHeading, 0, 3);
@@ -97,16 +108,56 @@ public sealed partial class StatusForm : DbxForm
         viewport.Controls.Add(column);
         Controls.Add(viewport); Controls.Add(buttons);
         viewport.SizeChanged += (_, _) => LayoutContents();
-        foreach (Control focusable in new Control[] { recovery, queue, errors, rescued })
+        foreach (Control focusable in new Control[] { downloads, recovery, queue, errors, rescued })
             focusable.Enter += (_, _) => viewport.ScrollControlIntoView(focusable);
     }
-    public void UpdateSnapshot(TraySnapshot snapshot, QueueAge? age, DbxLight.Core.DbxConfig config)
+    private void ConfigureDownloads()
+    {
+        downloads.Name = "downloads";
+        downloads.AccessibleName = downloadHeading.Text;
+        downloads.Dock = DockStyle.Fill;
+        downloads.ReadOnly = true;
+        downloads.AllowUserToAddRows = false;
+        downloads.AllowUserToDeleteRows = false;
+        downloads.RowHeadersVisible = false;
+        downloads.BackgroundColor = SystemColors.Window;
+        downloads.BorderStyle = BorderStyle.FixedSingle;
+        downloads.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        downloads.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+        downloads.DpiChangedAfterParent += (_, _) => SizeDownloadRows();
+        foreach (var (title, width) in new[] { ("名前とパス", 56), ("済んだ量 / 全体", 26), ("残りの見込み", 18) })
+            downloads.Columns.Add(new DataGridViewTextBoxColumn
+            { HeaderText = title, FillWeight = width, SortMode = DataGridViewColumnSortMode.NotSortable });
+        downloads.Visible = downloadHeading.Visible = false;
+    }
+
+    internal void UpdateDownloadProgress(TraySnapshot snapshot, DbxLight.Core.DbxConfig config)
     {
         if (IsDisposed) return;
-        displayedConfig = config;
+        UpdateSummary(snapshot, config);
+        var files = DownloadPresentation.Files(snapshot);
+        bool changed = downloads.RowCount != files.Count;
+        if (changed)
+        {
+            downloads.Rows.Clear();
+            if (files.Count > 0) downloads.Rows.Add(files.Count);
+        }
+        for (int index = 0; index < files.Count; index++)
+        {
+            var file = files[index];
+            var row = downloads.Rows[index];
+            row.SetValues(file.Name, DownloadPresentation.Amount(file.Bytes, file.Size),
+                DownloadPresentation.Remaining(file.RemainingSeconds));
+            row.Cells[0].ToolTipText = file.Name;
+        }
+        downloads.Visible = downloadHeading.Visible = files.Count > 0;
+        if (changed) LayoutContents();
+        else SizeDownloadRows();
+    }
+
+    private void UpdateSummary(TraySnapshot snapshot, DbxLight.Core.DbxConfig config)
+    {
         var s = snapshot.Status;
-        displayedLog = s.LogCapture;
-        openLogs.Enabled = DbxLight.Core.MountLogStore.OpenFolder(displayedLog) is not null;
         string Count(long? n) => n is { } value ? $"{value:N0} 件" : "確認できません";
         summary.Text = TrayPresentation.Headline(snapshot, config) + "\n" +
             $"アップロード待ち {Count(s.UploadsQueued)}    アップロード中 {Count(s.UploadsInProgress)}    失敗 {Count(s.ErroredFiles)}\n" +
@@ -116,6 +167,16 @@ public sealed partial class StatusForm : DbxForm
                 (preparing.Stopping ? "　退避の区切りで止めます。" : "");
         if (s.UnregisteredCredentialFiles.Count > 0)
             summary.Text += "\n未登録の認証情報の作業ファイルを残しています: " + string.Join("; ", s.UnregisteredCredentialFiles);
+    }
+
+    public void UpdateSnapshot(TraySnapshot snapshot, QueueAge? age, DbxLight.Core.DbxConfig config)
+    {
+        if (IsDisposed) return;
+        displayedConfig = config;
+        var s = snapshot.Status;
+        displayedLog = s.LogCapture;
+        openLogs.Enabled = DbxLight.Core.MountLogStore.OpenFolder(displayedLog) is not null;
+        UpdateDownloadProgress(snapshot, config);
         recovery.Text = (s.RecoveryLocation ?? "").ReplaceLineEndings(Environment.NewLine);
         recovery.Visible = s.RecoveryRequired || s.ProcessUncertain;
         var extracted = (snapshot.Rescued ?? []).Where(r => !r.Acknowledged).ToArray();

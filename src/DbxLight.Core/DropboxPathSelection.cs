@@ -8,7 +8,6 @@ internal sealed record DropboxPathSelection(string Root, IReadOnlyList<string[]>
     // The Dropbox encoder and rclone's Standard encoder differ for a literal full-width
     // backslash, control symbols and trailing spaces. Preserve only reversible spellings.
     private const char Quote = '\u201b';
-    private const string WinFspCharacters = "\u0022*:<>?|\\";
     private const int MaxCandidateReads = 64;
 
     internal bool NeedsLookup => Components.Any(component => component.Length > 1);
@@ -26,7 +25,7 @@ internal sealed record DropboxPathSelection(string Root, IReadOnlyList<string[]>
                 char c = part[i];
                 if (c is not (>= '\uf000' and <= '\uf0ff')) continue;
                 char plain = (char)(c - '\uf000');
-                if (!WinFspCharacters.Contains(plain) || escaped.Count == 4) throw Ambiguous();
+                if (!MountPaths.WinFspCharacters.Contains(plain) || escaped.Count == 4) throw Ambiguous();
                 escaped.Add(i);
                 standard[i] = plain;
             }

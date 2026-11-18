@@ -85,8 +85,8 @@ internal static class RecoveryJournal
         if (newest.Select(v => v.GenerationId).Distinct(StringComparer.Ordinal).Count() != 1) throw Unknown();
         long revision = newest.Max(v => v.RevisionNumber);
         var latest = newest.Where(v => v.RevisionNumber == revision).ToArray();
-        if (latest.Skip(1).Any(v => !Same(v, latest[0]))) throw Unknown();
-        RuntimeState selected = latest[0];
+        RuntimeState selected = MountProof.Retain(latest[0], newest);
+        if (latest.Skip(1).Any(v => !Same(MountProof.Retain(v, newest), selected))) throw Unknown();
         foreach (var older in values.Where(v => v.GenerationNumber < generation && !SameOwner(v, selected)))
             if (!OwnerStopped(older)) throw Unknown();
         return selected;
@@ -141,6 +141,7 @@ internal static class RecoveryJournal
         }
         else if (latest.Any(v => v.GenerationId != value.GenerationId)) throw Unknown();
         RequireOwner(value, statePath);
+        value = MountProof.Retain(value, candidates.OrderByDescending(v => v.RevisionNumber));
         long revision = candidates.Where(v => v.GenerationNumber == value.GenerationNumber && v.GenerationId == value.GenerationId)
             .Select(v => v.RevisionNumber).DefaultIfEmpty(0).Max();
         return value with { RevisionNumber = checked(revision + 1), RecoveryJournalVersion = 1, RecoveryRevisionUtc = DateTimeOffset.UtcNow };

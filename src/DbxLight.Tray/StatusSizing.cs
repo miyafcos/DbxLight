@@ -39,6 +39,7 @@ public sealed partial class StatusForm
         try
         {
             float scale = DisplayScale;
+            SizeDownloadRows();
             int textHeight = recovery.Visible ? TextRenderer.MeasureText(recovery.Text, recovery.Font,
                 new Size(Math.Max(1, viewport.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 16), int.MaxValue),
                 // Native multiline edit metrics can exceed TextRenderer by a few pixels after DPI scaling.
@@ -54,6 +55,18 @@ public sealed partial class StatusForm
             column.PerformLayout();
         }
         finally { arranging = false; }
+    }
+    private void SizeDownloadRows()
+    {
+        int rows = Math.Min(4, downloads.RowCount);
+        int height = 0;
+        if (rows > 0)
+        {
+            height = downloads.ColumnHeadersHeight + downloads.Margin.Vertical + 2;
+            for (int index = 0; index < rows; index++) height += downloads.Rows[index].Height;
+        }
+        RowStyle style = summarySection.RowStyles[2];
+        if (style.Height != height) style.Height = height;
     }
     internal void ScrollToHistory() => viewport.AutoScrollPosition = new Point(0, rescueSection.Top);
     internal void ScrollToEnd() => viewport.AutoScrollPosition = new Point(0, viewport.VerticalScroll.Maximum);

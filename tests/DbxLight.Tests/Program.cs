@@ -252,6 +252,21 @@ internal static class Program
             Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
             return focused.Failures == 0 && focused.Count > 0 ? 0 : 1;
         }
+        if (args is ["--unit10b"])
+        {
+            var focused = new TestRunner();
+            Unit10bDownloadTests.Run(focused);
+            focused.Test("E2E: resident shows, advances, and clears a mounted download", Unit10bDownloadTests.MountedDownload);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 ? 0 : 1;
+        }
+        if (args is ["--unit10b-recovery"])
+        {
+            var focused = new TestRunner();
+            Unit9Tests.RunUnit10bRecovery(focused);
+            Console.WriteLine($"RESULT: {(focused.Failures == 0 ? "PASS" : "FAIL")} ({focused.Passed}/{focused.Count})");
+            return focused.Failures == 0 ? 0 : 1;
+        }
         if (args.Length == 5 && args[0] == "--pipe-host") return TrayTests.PipeHost(args);
         if (args.Length != 1 || args[0] is not ("--unit" or "--all"))
         {
@@ -288,6 +303,8 @@ internal static class Program
         Unit7Tests.Run(runner);
         Unit8Tests.Run(runner);
         Unit9Tests.Run(runner);
+        Unit9Tests.RunUnit10bRecovery(runner);
+        Unit10bDownloadTests.Run(runner);
         Unit6s7rTests.Run(runner);
         Unit6s7rTests.RunReview2(runner);
         Unit6s7rTests.RunReview3(runner);
